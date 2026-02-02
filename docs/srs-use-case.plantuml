@@ -1,0 +1,65 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+
+actor "User (Trader)" as User
+actor "Binance Exchange" as Binance
+
+rectangle "QUANTFLOW System" {
+    
+    package "Access & Configuration" {
+        usecase "UC-01: Login" as UC01
+        usecase "UC-02: Update Account Info" as UC02
+        usecase "UC-03: Configure API Keys" as UC03
+        usecase "UC-12: Configure Unit Cost" as UC12
+    }
+
+    package "Strategy Builder" {
+        usecase "UC-04: Design Strategy" as UC04
+        usecase "UC-05: Manage Strategy Templates" as UC05
+        note right of UC05
+            Includes: Save, Import (JSON), 
+            Export (JSON)
+        end note
+    }
+
+    package "Backtest Engine" {
+        usecase "UC-06: Run Backtest" as UC06
+        usecase "UC-07: View Backtest Report" as UC07
+    }
+
+    package "Live Trade Operation" {
+        usecase "UC-08: Manage Bot Instance" as UC08
+        usecase "UC-09: Monitor Live Bot" as UC09
+        usecase "Execute Orders" as SysExec
+        usecase "Sync Market Data" as SysSync
+    }
+
+    package "Monitoring" {
+        usecase "UC-10: View Dashboard" as UC10
+        usecase "UC-11: View Trade History" as UC11
+    }
+}
+
+' User relationships
+User --> UC01
+User --> UC02
+User --> UC12
+User --> UC03
+User --> UC04
+User --> UC05
+User --> UC06
+User --> UC08
+User --> UC09
+User --> UC10
+User --> UC11
+
+' System Dependencies and External Actors
+UC06 ..> UC07 : <<include>>
+UC08 ..> SysExec : <<include>>
+SysExec -- Binance : "Place Orders/Get Balance"
+SysSync -- Binance : "WebSocket/REST API"
+UC09 ..> SysSync : <<include>>
+UC03 ..> Binance : "Validate Keys"
+
+@enduml

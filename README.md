@@ -42,7 +42,7 @@
 ## 🛠 Công nghệ sử dụng
 Hệ thống được phát triển dựa trên các công nghệ hiện đại nhằm đảm bảo tính ổn định và thời gian thực:
 
-* **Backend:** Golang (Gin Framework, Gorilla WebSocket)
+* **Backend:** Golang (Gin Framework, Melody)
 * **Frontend:** Next.js (TypeScript, Tailwind CSS, Shadcn/UI)
 * **Công cụ cốt lõi:** Google Blockly
 
