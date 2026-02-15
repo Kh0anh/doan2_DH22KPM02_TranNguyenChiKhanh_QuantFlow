@@ -1,65 +1,67 @@
 @startuml
 left to right direction
 skinparam packageStyle rectangle
+skinparam monochrome true
+skinparam shadowing false
 
-actor "User (Trader)" as User
-actor "Binance Exchange" as Binance
+actor "User (Trader)" as Trader
+actor "Binance Exchange" as Binance <<System>>
 
 rectangle "QUANTFLOW System" {
-    
-    package "Access & Configuration" {
+    package "Access" {
         usecase "UC-01: Login" as UC01
+    }
+
+    package "Configuration" {
         usecase "UC-02: Update Account Info" as UC02
         usecase "UC-03: Configure API Keys" as UC03
-        usecase "UC-12: Configure Unit Cost" as UC12
+        usecase "Validate API Keys" as UC03_Validate
     }
 
     package "Strategy Builder" {
-        usecase "UC-04: Design Strategy" as UC04
-        usecase "UC-05: Manage Strategy Templates" as UC05
-        note right of UC05
-            Includes: Save, Import (JSON), 
-            Export (JSON)
-        end note
+        usecase "UC-04: Design Strategy (Low-code)" as UC04
+        usecase "UC-05: Manage Strategy Templates\n(CRUD, Import/Export JSON)" as UC05
     }
 
     package "Backtest Engine" {
         usecase "UC-06: Run Backtest" as UC06
-        usecase "UC-07: View Backtest Report" as UC07
+        usecase "UC-07: View Backtest Performance Report" as UC07
     }
 
     package "Live Trade Operation" {
-        usecase "UC-08: Manage Bot Instance" as UC08
+        usecase "UC-08: Manage Bot Instance\n(Start/Stop)" as UC08
         usecase "UC-09: Monitor Live Bot" as UC09
-        usecase "Execute Orders" as SysExec
-        usecase "Sync Market Data" as SysSync
+        usecase "Execute Orders" as ExecOrder
+        usecase "Sync Market Data" as SyncData
     }
 
     package "Monitoring" {
-        usecase "UC-10: View Dashboard" as UC10
+        usecase "UC-10: View Market" as UC10
         usecase "UC-11: View Trade History" as UC11
     }
+
+    ' Internal System Relationships
+    UC06 ..> UC07 : <<include>>
+    UC08 ..> ExecOrder : <<include>>
+    UC09 ..> SyncData : <<include>>
+    UC03 <.. UC03_Validate : <<extend>>
 }
 
-' User relationships
-User --> UC01
-User --> UC02
-User --> UC12
-User --> UC03
-User --> UC04
-User --> UC05
-User --> UC06
-User --> UC08
-User --> UC09
-User --> UC10
-User --> UC11
+' Actor Interactions
+Trader -- UC01
+Trader -- UC02
+Trader -- UC03
+Trader -- UC04
+Trader -- UC05
+Trader -- UC06
+Trader -- UC08
+Trader -- UC09
+Trader -- UC10
+Trader -- UC11
 
-' System Dependencies and External Actors
-UC06 ..> UC07 : <<include>>
-UC08 ..> SysExec : <<include>>
-SysExec -- Binance : "Place Orders/Get Balance"
-SysSync -- Binance : "WebSocket/REST API"
-UC09 ..> SysSync : <<include>>
-UC03 ..> Binance : "Validate Keys"
+' External Interactions
+UC03_Validate -- Binance
+ExecOrder -- Binance : "REST API / WS"
+SyncData -- Binance : "WebSocket"
 
 @enduml
