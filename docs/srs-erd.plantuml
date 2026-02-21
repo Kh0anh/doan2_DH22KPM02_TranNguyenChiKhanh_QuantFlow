@@ -1,0 +1,112 @@
+@startuml
+
+hide circle
+skinparam linetype ortho
+
+title QuanFlow ERD
+
+entity "Users" as users {
+  * id : UUID <<PK>>
+  --
+  * username : VARCHAR(50) <<UK>>
+  * password_hash : VARCHAR(255)
+  created_at : TIMESTAMPTZ
+  updated_at : TIMESTAMPTZ
+}
+
+entity "API_Keys" as api_keys {
+  * id : UUID <<PK>>
+  --
+  * user_id : UUID <<FK>>
+  exchange : VARCHAR(50)
+  * api_key : VARCHAR(255)
+  * secret_key_encrypted : VARCHAR(512)
+  status : VARCHAR(20)
+  created_at : TIMESTAMPTZ
+  updated_at : TIMESTAMPTZ
+}
+
+entity "Strategies" as strategies {
+  * id : UUID <<PK>>
+  --
+  * user_id : UUID <<FK>>
+  * name : VARCHAR(100)
+  * logic_json : JSONB
+  version : INT
+  status : VARCHAR(20)
+  created_at : TIMESTAMPTZ
+  updated_at : TIMESTAMPTZ
+}
+
+entity "Bot_Instances" as bot_instances {
+  * id : UUID <<PK>>
+  --
+  * user_id : UUID <<FK>>
+  * strategy_id : UUID <<FK>>
+  * strategy_version : INT
+  * bot_name : VARCHAR(100)
+  * symbol : VARCHAR(20)
+  * status : VARCHAR(20)
+  total_pnl : DECIMAL(18,8)
+  created_at : TIMESTAMPTZ
+  updated_at : TIMESTAMPTZ
+}
+
+entity "Bot_Lifecycle_Variables" as bot_variables {
+  * id : UUID <<PK>>
+  --
+  * bot_id : UUID <<FK>>
+  * variable_name : VARCHAR(100)
+  * variable_value : JSONB
+  * updated_at : TIMESTAMPTZ
+}
+
+entity "Bot_Logs" as bot_logs {
+  * id : BIGSERIAL <<PK>>
+  --
+  * bot_id : UUID <<FK>>
+  action_decision : VARCHAR(50)
+  unit_used : INT
+  message : TEXT
+  * created_at : TIMESTAMPTZ
+}
+
+entity "Trade_History" as trade_history {
+  * id : UUID <<PK>>
+  --
+  * user_id : UUID <<FK>>
+  * bot_id : UUID <<FK>>
+  * symbol : VARCHAR(20)
+  * side : VARCHAR(10)
+  * quantity : DECIMAL(18,8)
+  * fill_price : DECIMAL(18,8)
+  * fee : DECIMAL(18,8)
+  * realized_pnl : DECIMAL(18,8)
+  * status : VARCHAR(20)
+  * executed_at : TIMESTAMPTZ
+}
+
+entity "Candles_Data" as candles_data {
+  * id : BIGSERIAL <<PK>>
+  --
+  * symbol : VARCHAR(20) <<UK>>
+  * open_time : TIMESTAMPTZ <<UK>>
+  * open_price : DECIMAL(18,8)
+  * high_price : DECIMAL(18,8)
+  * low_price : DECIMAL(18,8)
+  * close_price : DECIMAL(18,8)
+  * volume : DECIMAL(18,8)
+  is_closed : BOOLEAN
+}
+
+users ||--o{ api_keys : "cấu hình"
+users ||--o{ strategies : "thiết kế"
+users ||--o{ bot_instances : "quản lý"
+users ||--o{ trade_history : "sở hữu"
+
+strategies ||--o{ bot_instances : "khởi tạo thành"
+bot_instances ||--o{ trade_history : "sinh ra lệnh"
+bot_instances ||--o{ bot_variables : "lưu trữ biến"
+bot_instances ||--o{ bot_logs : "ghi nhận nhật ký"
+
+@enduml
