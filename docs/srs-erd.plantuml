@@ -1,78 +1,105 @@
-@startuml
+@startuml QuantFlow_ERD
 
-hide circle
 skinparam linetype ortho
 
-title QuanFlow ERD
+hide circle
+hide methods
 
 entity "Users" as users {
-  * id : UUID <<PK>>
+  * **id** : UUID <<PK>>
   --
   * username : VARCHAR(50) <<UK>>
   * password_hash : VARCHAR(255)
-  created_at : TIMESTAMPTZ
-  updated_at : TIMESTAMPTZ
+  * created_at : TIMESTAMPTZ
+    updated_at : TIMESTAMPTZ
 }
 
 entity "API_Keys" as api_keys {
-  * id : UUID <<PK>>
+  * **id** : UUID <<PK>>
   --
   * user_id : UUID <<FK>>
-  exchange : VARCHAR(50)
+  * exchange : VARCHAR(50)
   * api_key : VARCHAR(255)
   * secret_key_encrypted : VARCHAR(512)
-  status : VARCHAR(20)
-  created_at : TIMESTAMPTZ
-  updated_at : TIMESTAMPTZ
+  * status : VARCHAR(20)
+  * created_at : TIMESTAMPTZ
+    updated_at : TIMESTAMPTZ
 }
 
 entity "Strategies" as strategies {
-  * id : UUID <<PK>>
+  * **id** : UUID <<PK>>
   --
   * user_id : UUID <<FK>>
   * name : VARCHAR(100)
-  * logic_json : JSONB
-  version : INT
-  status : VARCHAR(20)
-  created_at : TIMESTAMPTZ
-  updated_at : TIMESTAMPTZ
+  * status : VARCHAR(20)
+  * created_at : TIMESTAMPTZ
+    updated_at : TIMESTAMPTZ
 }
 
+entity "Strategy_Versions" as strategy_versions {
+  * **id** : UUID <<PK>>
+  --
+  * strategy_id : UUID <<FK>>
+  * version_number : INT
+  * logic_json : JSONB
+  * status : VARCHAR(20)
+  * created_at : TIMESTAMPTZ
+}
+note right of strategy_versions
+  Unique constraint:
+  (strategy_id, version_number)
+  --
+  status: Draft | Valid
+  Index: (strategy_id, version_number DESC)
+end note
+
 entity "Bot_Instances" as bot_instances {
-  * id : UUID <<PK>>
+  * **id** : UUID <<PK>>
   --
   * user_id : UUID <<FK>>
   * strategy_id : UUID <<FK>>
-  * strategy_version : INT
+  * strategy_version_id : UUID <<FK>>
+  * api_key_id : UUID <<FK>>
   * bot_name : VARCHAR(100)
   * symbol : VARCHAR(20)
+  * interval : VARCHAR(10)
   * status : VARCHAR(20)
-  total_pnl : DECIMAL(18,8)
-  created_at : TIMESTAMPTZ
-  updated_at : TIMESTAMPTZ
+  * total_pnl : DECIMAL(18,8)
+  * created_at : TIMESTAMPTZ
+    updated_at : TIMESTAMPTZ
 }
+note right of bot_instances
+  status: Running | Stopped | Error
+  interval: 1m | 5m | 15m | 1h | 4h | 1d
+end note
 
 entity "Bot_Lifecycle_Variables" as bot_variables {
-  * id : UUID <<PK>>
+  * **id** : UUID <<PK>>
   --
   * bot_id : UUID <<FK>>
   * variable_name : VARCHAR(100)
   * variable_value : JSONB
   * updated_at : TIMESTAMPTZ
 }
+note right of bot_variables
+  Index: (bot_id, variable_name)
+end note
 
 entity "Bot_Logs" as bot_logs {
-  * id : BIGSERIAL <<PK>>
+  * **id** : BIGSERIAL <<PK>>
   --
   * bot_id : UUID <<FK>>
-  action_decision : VARCHAR(50)
-  unit_used : INT
-  message : TEXT
+    action_decision : VARCHAR(50)
+  * message : TEXT
   * created_at : TIMESTAMPTZ
 }
+note right of bot_logs
+  Index: (bot_id, created_at DESC)
+  Tối ưu cho high-frequency insert
+end note
 
 entity "Trade_History" as trade_history {
-  * id : UUID <<PK>>
+  * **id** : UUID <<PK>>
   --
   * user_id : UUID <<FK>>
   * bot_id : UUID <<FK>>
@@ -85,28 +112,45 @@ entity "Trade_History" as trade_history {
   * status : VARCHAR(20)
   * executed_at : TIMESTAMPTZ
 }
+note right of trade_history
+  side: Long | Short
+  status: Filled | Canceled
+  Index: (user_id, bot_id, symbol, executed_at DESC)
+end note
 
-entity "Candles_Data" as candles_data {
-  * id : BIGSERIAL <<PK>>
+entity "Candles_Data" as candles {
+  * **id** : BIGSERIAL <<PK>>
   --
-  * symbol : VARCHAR(20) <<UK>>
-  * open_time : TIMESTAMPTZ <<UK>>
+  * symbol : VARCHAR(20)
+  * interval : VARCHAR(10)
+  * open_time : TIMESTAMPTZ
   * open_price : DECIMAL(18,8)
   * high_price : DECIMAL(18,8)
   * low_price : DECIMAL(18,8)
   * close_price : DECIMAL(18,8)
   * volume : DECIMAL(18,8)
-  is_closed : BOOLEAN
+  * is_closed : BOOLEAN
 }
+note right of candles
+  Unique constraint:
+  (symbol, interval, open_time)
+  --
+  Index: (symbol, interval, open_time DESC)
+end note
 
-users ||--o{ api_keys : "cấu hình"
-users ||--o{ strategies : "thiết kế"
-users ||--o{ bot_instances : "quản lý"
-users ||--o{ trade_history : "sở hữu"
+users ||--o{ api_keys : "sở hữu"
+users ||--o{ strategies : "tạo"
+users ||--o{ bot_instances : "vận hành"
+users ||--o{ trade_history : "thực hiện"
 
-strategies ||--o{ bot_instances : "khởi tạo thành"
-bot_instances ||--o{ trade_history : "sinh ra lệnh"
-bot_instances ||--o{ bot_variables : "lưu trữ biến"
-bot_instances ||--o{ bot_logs : "ghi nhận nhật ký"
+strategies ||--o{ strategy_versions : "có nhiều phiên bản"
+strategy_versions ||--o{ bot_instances : "được sử dụng bởi"
+
+strategies ||--o{ bot_instances : "áp dụng chiến lược"
+api_keys ||--o{ bot_instances : "sử dụng API Key"
+
+bot_instances ||--o{ bot_variables : "duy trì biến"
+bot_instances ||--o{ bot_logs : "sinh nhật ký"
+bot_instances ||--o{ trade_history : "tạo lệnh"
 
 @enduml
