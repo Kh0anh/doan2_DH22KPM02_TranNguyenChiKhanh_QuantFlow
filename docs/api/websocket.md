@@ -48,7 +48,7 @@ wss://api.quantflow.com/v1/ws?token=<JWT_TOKEN>
 
 #### Phương thức 2 — HttpOnly Cookie
 
-Nếu trình duyệt hỗ trợ gửi Cookie cùng quá trình WebSocket Handshake, Backend sẽ tự động đọc JWT Token từ HttpOnly Cookie `session_token` mà không cần Client gửi tường minh.
+Nếu trình duyệt hỗ trợ gửi Cookie cùng quá trình WebSocket Handshake, Backend sẽ tự động đọc JWT Token từ HttpOnly Cookie `token` mà không cần Client gửi tường minh.
 
 #### Xử lý lỗi xác thực
 

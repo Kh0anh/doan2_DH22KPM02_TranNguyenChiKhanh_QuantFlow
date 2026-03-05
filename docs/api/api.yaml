@@ -1047,7 +1047,6 @@ paths:
             example:
               strategy_id: "c3d4e5f6-a7b8-9012-cdef-123456789012"
               symbol: "BTCUSDT"
-              timeframe: "15m"
               start_time: "2025-01-01T00:00:00Z"
               end_time: "2025-12-31T23:59:59Z"
               initial_capital: 1000
@@ -1538,13 +1537,11 @@ paths:
                 data:
                   - id: 10542
                     action_decision: "Đặt lệnh Long"
-                    unit_used: 15
-                    message: "RSI = 28.5 < 30 → Mở vị thế Long 0.01 BTC tại giá 64500.00"
+                    message: "Mở vị thế Long 0.01 BTC tại giá 64500.00"
                     created_at: "2026-02-28T10:15:00Z"
                   - id: 10541
-                    action_decision: "Bỏ qua"
-                    unit_used: 3
-                    message: "EMA9 = 64350 < EMA21 = 64400 → Chưa đủ điều kiện vào lệnh."
+                    action_decision: "Đặt lệnh Short"
+                    message: "Mở vị thế Short 0.01 BTC tại giá 64400.00"
                     created_at: "2026-02-28T10:00:00Z"
                 pagination:
                   next_cursor: "10540"
@@ -2801,9 +2798,6 @@ components:
           type: string
           nullable: true
           description: "Quyết định hành động (VD: Đặt lệnh Long, Bỏ qua)."
-        unit_used:
-          type: integer
-          description: Số lượng Unit đã sử dụng trong phiên này.
         message:
           type: string
           description: Thông báo chi tiết hoặc lỗi trong quá trình thực thi.
