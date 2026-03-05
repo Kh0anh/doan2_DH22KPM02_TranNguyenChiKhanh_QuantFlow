@@ -30,3 +30,6 @@ backend/*.so
 backend/*.dylib
 backend/vendor/
 backend/go.work
+
+# -- Exmpale -- 
+docs/example/
