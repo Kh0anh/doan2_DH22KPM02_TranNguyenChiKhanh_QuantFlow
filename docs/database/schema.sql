@@ -57,7 +57,6 @@ CREATE TABLE bot_instances (
     api_key_id UUID NOT NULL,
     bot_name VARCHAR(100) NOT NULL,
     symbol VARCHAR(20) NOT NULL,
-    interval VARCHAR(10) NOT NULL,
     status VARCHAR(20) NOT NULL,
     total_pnl DECIMAL(18,8) NOT NULL DEFAULT 0.0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

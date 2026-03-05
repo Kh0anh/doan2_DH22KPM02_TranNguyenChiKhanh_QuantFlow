@@ -25,7 +25,7 @@ Lưu trữ thông tin cấu hình khóa API kết nối với sàn giao dịch.
 | 3 | `exchange` | VARCHAR(50) | Có | Tên sàn giao dịch (Ví dụ: Binance). |
 | 4 | `api_key` | VARCHAR(255) | Có | Khóa API công khai (Access Key). |
 | 5 | `secret_key_encrypted`| VARCHAR(512) | Có | Khóa bí mật (Secret Key) đã được mã hóa AES-256. |
-| 6 | `status` | VARCHAR(20) | Có | Trạng thái kết nối (Ví dụ: Active, Revoked). DEFAULT 'Active'. |
+| 6 | `status` | VARCHAR(20) | Có | Trạng thái kết nối (Ví dụ: Connected, Revoked). DEFAULT 'Active'. |
 | 7 | `created_at` | TIMESTAMPTZ | Có | Thời gian tạo cấu hình API. |
 | 8 | `updated_at` | TIMESTAMPTZ | Không | Thời gian cập nhật cấu hình gần nhất. |
 
@@ -68,11 +68,10 @@ Quản lý các tiến trình Bot đang được vận hành (chạy thực tế
 | 5 | `api_key_id` | UUID | Có | Khóa ngoại (FK) liên kết tới bảng API_Keys. Bot sử dụng API Key này để gửi lệnh lên sàn. |
 | 6 | `bot_name` | VARCHAR(100) | Có | Tên định danh của Bot. |
 | 7 | `symbol` | VARCHAR(20) | Có | Cặp tiền mã hóa Bot đang giao dịch (Ví dụ: BTCUSDT). |
-| 8 | `interval` | VARCHAR(10) | Có | Timeframe Bot chạy (Ví dụ: 1m, 5m, 15m, 1h, 4h, 1d). |
-| 9 | `status` | VARCHAR(20) | Có | Trạng thái hiện tại của Bot (Running, Stopped, Error). |
-| 10 | `total_pnl` | DECIMAL(18,8)| Có | Tổng lợi nhuận/thua lỗ (PnL) do Bot tạo ra. DEFAULT 0. |
-| 11 | `created_at` | TIMESTAMPTZ | Có | Thời gian khởi tạo Bot. |
-| 12 | `updated_at` | TIMESTAMPTZ | Không | Thời gian cập nhật trạng thái/PnL gần nhất. |
+| 8 | `status` | VARCHAR(20) | Có | Trạng thái hiện tại của Bot (Running, Stopped, Error). |
+| 9 | `total_pnl` | DECIMAL(18,8)| Có | Tổng lợi nhuận/thua lỗ (PnL) do Bot tạo ra. DEFAULT 0. |
+| 10 | `created_at` | TIMESTAMPTZ | Có | Thời gian khởi tạo Bot. |
+| 11 | `updated_at` | TIMESTAMPTZ | Không | Thời gian cập nhật trạng thái/PnL gần nhất. |
 
 ## 6. Bảng `Bot_Lifecycle_Variables`
 Lưu trữ các biến vòng đời phục vụ quá trình tính toán logic liên tục của Bot.
