@@ -1,0 +1,2950 @@
+openapi: "3.0.3"
+
+info:
+  title: QuantFlow API Document V1.0
+  version: "1.0.0"
+  description: |
+    ## Tổng quan
+
+    Tài liệu đặc tả RESTful API cho dự án **QuantFlow** — nền tảng Low-code hỗ trợ xây dựng
+    và vận hành chiến lược giao dịch tiền mã hóa tự động trên sàn giao dịch tập trung (CEX),
+    cụ thể là Binance Futures.
+
+    Hệ thống cung cấp:
+    - Môi trường lập trình trực quan (Drag-and-drop) sử dụng Google Blockly.
+    - Quản lý mẫu chiến lược giao dịch (CRUD, Import/Export JSON).
+    - Backtest chiến lược trên dữ liệu lịch sử.
+    - Khởi tạo và điều khiển Bot giao dịch tự động trên thị trường thật.
+    - Giám sát trạng thái Bot, PnL, vị thế và nhật ký hoạt động theo thời gian thực.
+
+    ## Cơ chế Xác thực (Authentication)
+
+    Hệ thống sử dụng **JWT (JSON Web Token)** kết hợp **HttpOnly Cookie** để bảo vệ phiên
+    làm việc. Mô hình đơn người dùng (Single User / Admin).
+
+    **Luồng hoạt động:**
+    1. Gửi request `POST /api/v1/auth/login` với thông tin đăng nhập.
+    2. Backend tạo JWT Token và gắn vào **HttpOnly Cookie** (`Set-Cookie`).
+    3. Trình duyệt tự động gửi Cookie trong mọi request tiếp theo.
+    4. Token hết hạn sau **24 giờ**, người dùng cần đăng nhập lại.
+
+    **Đặc tính bảo mật Cookie:**
+    - `HttpOnly` — JavaScript phía Client không đọc được (chống XSS).
+    - `Secure` — Chỉ gửi qua HTTPS (Production).
+    - `SameSite=Lax` — Giảm thiểu CSRF.
+
+    ## Quy chuẩn Header
+
+    | Header         | Giá trị            | Mô tả                                                |
+    |:---------------|:-------------------|:------------------------------------------------------|
+    | `Content-Type` | `application/json` | Bắt buộc cho request có Body (POST, PUT, PATCH).      |
+    | `Accept`       | `application/json` | Quy định kiểu dữ liệu phản hồi mong muốn.            |
+
+    ## Cấu trúc Response lỗi chuẩn
+
+    ```json
+    {
+      "error": {
+        "code": "ERROR_CODE",
+        "message": "Mô tả lỗi chi tiết."
+      }
+    }
+    ```
+
+  license:
+    name: GPLv3
+    url: https://github.com/Kh0anh/doan2_DH22KPM02_TranNguyenChiKhanh_QuantFlow/blob/docs/init-api/LICENSE
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Dev Server
+
+tags:
+  - name: Authentication
+    description: Quản lý xác thực phiên làm việc (Đăng nhập, Đăng xuất, Kiểm tra phiên). Hệ thống áp dụng mô hình đơn người dùng (Single User / Admin).
+  - name: Account
+    description: Quản lý thông tin tài khoản người dùng (Cập nhật Username, Password). Mọi thay đổi thông tin nhạy cảm yêu cầu xác thực bằng mật khẩu hiện tại.
+  - name: Exchange
+    description: >-
+      Quản lý cấu hình kết nối sàn giao dịch (Binance). Secret Key là Write-Only —
+      tuyệt đối không trả về plain-text trong bất kỳ Response nào. Endpoint GET chỉ trả về
+      trạng thái và API Key đã che (Masking ******). Secret Key được mã hóa AES-256-GCM
+      trước khi lưu vào Database.
+  - name: Strategies
+    description: >-
+      CRUD mẫu chiến lược giao dịch. Chiến lược được thiết kế dưới dạng khối logic
+      Google Blockly và lưu trữ ở định dạng JSON (JSONB). Hỗ trợ Import/Export JSON,
+      quản lý phiên bản (Versioning) và kiểm tra ràng buộc toàn vẹn dữ liệu trước khi xóa.
+  - name: Backtests
+    description: >-
+      Thực thi mô phỏng chiến lược giao dịch trên dữ liệu nến lịch sử. Request bao gồm
+      đầy đủ tham số cấu hình giả lập: Strategy ID, Symbol, Timeframe, Time Range,
+      Vốn ban đầu (Initial Capital), Phí giao dịch (Fee) và giới hạn Unit.
+  - name: Bots
+    description: >-
+      Quản lý phiên bản thực thi Bot (Bot Instance). Bot được khởi tạo từ mẫu chiến lược,
+      thực hiện Snapshot (Deep Copy) logic tại thời điểm tạo. Sửa chiến lược gốc không
+      ảnh hưởng Bot đang chạy. Điều khiển Start/Stop và giám sát trạng thái Bot.
+  - name: Trades
+    description: >-
+      Truy xuất lịch sử giao dịch đã hoàn tất (Realized). Dữ liệu trích xuất từ Database
+      phục vụ đối soát phí và lợi nhuận thực tế. Bắt buộc hỗ trợ phân trang và lọc
+      theo Bot ID, Symbol.
+  - name: Market
+    description: >-
+      Cung cấp dữ liệu thị trường (Market Watch, biểu đồ nến OHLCV). Dữ liệu giá được
+      Backend nhận từ sàn Binance, xử lý và cung cấp cho Frontend thông qua các REST API.
+
+security:
+  - cookieAuth: []
+
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      operationId: login
+      summary: Đăng nhập hệ thống
+      description: |
+        Xác thực thông tin đăng nhập. Hệ thống so sánh mật khẩu đã băm (BCrypt/Argon2)
+        trong cơ sở dữ liệu.
+
+        **Quy tắc nghiệp vụ — Brute-force Protection:**
+        Nếu nhập sai **quá 5 lần liên tiếp**, tài khoản bị **khóa 15 phút**. Bộ đếm số lần
+        sai được reset về 0 khi đăng nhập thành công. Trong thời gian khóa, mọi request
+        đăng nhập đều bị từ chối với mã lỗi `403 Forbidden`.
+
+        Đăng nhập thành công tạo JWT Token và gắn vào HttpOnly Cookie (Max-Age: 24 giờ).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            example:
+              username: "admin"
+              password: "MySecureP@ssw0rd"
+      responses:
+        "200":
+          description: >-
+            Đăng nhập thành công. JWT Token được gắn vào HttpOnly Cookie
+            (`Set-Cookie: token=<JWT>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=86400`).
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: "token=eyJhbGciOi...; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=86400"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Đăng nhập thành công."
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: "#/components/schemas/UserBasic"
+        "401":
+          description: >-
+            Sai tên đăng nhập hoặc mật khẩu. Trả về số lần thử còn lại (`remaining_attempts`).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      error:
+                        type: object
+                        properties:
+                          remaining_attempts:
+                            type: integer
+                            example: 3
+              example:
+                error:
+                  code: "INVALID_CREDENTIALS"
+                  message: "Tên đăng nhập hoặc mật khẩu không chính xác."
+                  remaining_attempts: 3
+        "403":
+          description: >-
+            Tài khoản bị khóa do nhập sai quá 5 lần liên tiếp. Trả về thời điểm mở khóa.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      error:
+                        type: object
+                        properties:
+                          locked_until:
+                            type: string
+                            format: date-time
+              example:
+                error:
+                  code: "ACCOUNT_LOCKED"
+                  message: "Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau 15 phút."
+                  locked_until: "2026-02-28T15:30:00Z"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      operationId: logout
+      summary: Đăng xuất hệ thống
+      description: |
+        Đăng xuất khỏi hệ thống. Backend xóa Cookie phiên làm việc, vô hiệu hóa JWT Token
+        hiện tại. Cookie được ghi đè với `Max-Age=0` để trình duyệt tự động xóa.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Đăng xuất thành công. Cookie phiên bị xóa.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: "token=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                message: "Đăng xuất thành công."
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/me:
+    get:
+      tags:
+        - Authentication
+      operationId: getCurrentUser
+      summary: Lấy thông tin phiên đăng nhập hiện tại
+      description: |
+        Lấy thông tin người dùng đang đăng nhập. Frontend gọi endpoint này khi khởi tạo
+        ứng dụng để kiểm tra trạng thái phiên làm việc (Session Validation).
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Trả về thông tin người dùng hiện tại.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: "#/components/schemas/UserProfile"
+              example:
+                data:
+                  user:
+                    id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                    username: "admin"
+                    created_at: "2026-01-15T08:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      operationId: refreshToken
+      summary: Làm mới phiên đăng nhập (Refresh Token)
+      description: |
+        Làm mới JWT Token trước khi phiên hiện tại hết hạn, giúp người dùng duy trì
+        phiên làm việc liên tục mà không bị buộc phải đăng nhập lại.
+
+        **Luồng hoạt động:**
+        1. Frontend gọi endpoint này khi phát hiện Token sắp hết hạn (ví dụ: còn dưới
+           5 phút trước khi hết hạn 24 giờ).
+        2. Backend xác thực Token hiện tại từ Cookie. Nếu Token còn hợp lệ, hệ thống
+           tạo một JWT Token mới với thời hạn 24 giờ kể từ thời điểm hiện tại.
+        3. Token mới được gắn vào HttpOnly Cookie thay thế Token cũ.
+
+        **Quy tắc nghiệp vụ:**
+        - Chỉ chấp nhận làm mới khi Token hiện tại **chưa hết hạn**. Nếu Token đã hết hạn,
+          trả về `401 Unauthorized` và người dùng phải đăng nhập lại.
+        - Token cũ bị vô hiệu hóa ngay sau khi Token mới được cấp (Token Rotation).
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: >-
+            Làm mới phiên thành công. JWT Token mới được gắn vào HttpOnly Cookie
+            (`Set-Cookie: token=<NEW_JWT>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=86400`).
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: "token=eyJhbGciOi...; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=86400"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      expires_at:
+                        type: string
+                        format: date-time
+                        description: Thời điểm hết hạn của Token mới.
+              example:
+                message: "Làm mới phiên thành công."
+                data:
+                  expires_at: "2026-03-01T10:30:00Z"
+        "401":
+          description: >-
+            Token hiện tại đã hết hạn hoặc không hợp lệ. Người dùng phải đăng nhập lại.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "SESSION_EXPIRED"
+                  message: "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại."
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /account/profile:
+    put:
+      tags:
+        - Account
+      operationId: updateProfile
+      summary: Cập nhật thông tin tài khoản
+      description: |
+        Cập nhật thông tin tài khoản (Tên đăng nhập và/hoặc Mật khẩu). Người dùng **bắt
+        buộc** phải cung cấp `current_password` để xác thực quyền sở hữu, chống chiếm đoạt
+        phiên (Session Hijacking).
+
+        **Quy tắc nghiệp vụ:**
+        - Ít nhất một trong hai trường `new_username` hoặc `new_password` phải được cung cấp.
+        - Nếu cung cấp `new_password`, trường `confirm_password` là bắt buộc và phải trùng khớp.
+        - Sau khi cập nhật thành công, hệ thống **cưỡng chế đăng xuất** (Force Logout):
+          Cookie phiên bị xóa, Token cũ bị vô hiệu hóa. Người dùng phải đăng nhập lại
+          với thông tin mới.
+        - Mật khẩu mới được băm (hash) bằng BCrypt trước khi lưu vào Database.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+            examples:
+              changeAll:
+                summary: Đổi cả Username và Password
+                value:
+                  current_password: "MySecureP@ssw0rd"
+                  new_username: "khanh_trader"
+                  new_password: "N3wStr0ngP@ss!"
+                  confirm_password: "N3wStr0ngP@ss!"
+              changePasswordOnly:
+                summary: Chỉ đổi Password
+                value:
+                  current_password: "MySecureP@ssw0rd"
+                  new_password: "N3wStr0ngP@ss!"
+                  confirm_password: "N3wStr0ngP@ss!"
+              changeUsernameOnly:
+                summary: Chỉ đổi Username
+                value:
+                  current_password: "MySecureP@ssw0rd"
+                  new_username: "khanh_trader"
+      responses:
+        "200":
+          description: >-
+            Cập nhật thành công. Cookie phiên bị xóa (Force Logout). Người dùng cần
+            đăng nhập lại với thông tin mới.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: "token=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                message: "Cập nhật thành công. Vui lòng đăng nhập lại."
+        "400":
+          description: Dữ liệu đầu vào không hợp lệ (thiếu trường, mật khẩu xác nhận không khớp).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                passwordMismatch:
+                  summary: Mật khẩu xác nhận không khớp
+                  value:
+                    error:
+                      code: "PASSWORD_MISMATCH"
+                      message: "Mật khẩu xác nhận không trùng khớp."
+                missingFields:
+                  summary: Thiếu trường thay đổi
+                  value:
+                    error:
+                      code: "MISSING_CHANGE_FIELDS"
+                      message: "Vui lòng cung cấp ít nhất new_username hoặc new_password."
+        "401":
+          description: Sai mật khẩu hiện tại hoặc phiên làm việc hết hạn.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "INVALID_CURRENT_PASSWORD"
+                  message: "Mật khẩu hiện tại không chính xác. Vui lòng thử lại."
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /exchange/api-keys:
+    post:
+      tags:
+        - Exchange
+      operationId: saveApiKeys
+      summary: Lưu hoặc cập nhật cấu hình API Key sàn
+      description: |
+        Lưu hoặc cập nhật cặp khóa API kết nối với sàn Binance. Trước khi lưu, Backend gửi
+        request thử nghiệm (Ping/Account Info) đến Binance API để xác thực tính đúng đắn
+        và quyền hạn của Key (bắt buộc bật quyền Futures Trading).
+
+        **Quy tắc nghiệp vụ:**
+        - Secret Key được mã hóa **AES-256-GCM** trước khi ghi vào Database.
+        - Secret Key là **Write-Only**: hệ thống chỉ cho phép nhập, tuyệt đối không trả về
+          plain-text Secret Key trong bất kỳ Response nào.
+        - Nếu đã có cấu hình trước đó, thao tác này sẽ ghi đè cặp Key cũ.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveApiKeysRequest"
+            example:
+              exchange: "Binance"
+              api_key: "vmPUZE6mv9SD5VNHk4HlWFsOr6aKE2zvsw0MuIgwCIPy6utIco14y7Ju91duEh8A"
+              secret_key: "NhqPtmdSJYdKjVHjA7PZj4Mge3R5YNiP1e3UZjInClVN65XAbvqqM6A7H5fATj0j"
+      responses:
+        "201":
+          description: Kết nối sàn thành công. API Key được lưu vào Database (Secret Key đã mã hóa).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: "#/components/schemas/ApiKeyInfo"
+              example:
+                message: "Kết nối sàn thành công."
+                data:
+                  id: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+                  exchange: "Binance"
+                  api_key_masked: "****************************Eh8A"
+                  status: "Connected"
+                  created_at: "2026-02-28T10:00:00Z"
+        "400":
+          description: Định dạng API Key không hợp lệ (thiếu ký tự, khoảng trắng thừa).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "INVALID_KEY_FORMAT"
+                  message: "Vui lòng kiểm tra lại định dạng API Key."
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: >-
+            Sàn Binance từ chối xác thực — API Key không hợp lệ, sai IP whitelist,
+            hoặc chưa bật quyền Futures Trading.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "EXCHANGE_VALIDATION_FAILED"
+                  message: "API Key không hợp lệ hoặc thiếu quyền hạn Futures Trading."
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    get:
+      tags:
+        - Exchange
+      operationId: getApiKeys
+      summary: Lấy thông tin cấu hình API Key hiện tại
+      description: |
+        Lấy thông tin cấu hình API hiện tại. **Secret Key tuyệt đối không được trả về.**
+        Chỉ trả về trạng thái kết nối và API Key đã che (Masking: hiển thị 4 ký tự cuối,
+        phần còn lại thay bằng dấu `*`).
+
+        Nếu chưa cấu hình, trả về `data: null`.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Trả về thông tin cấu hình API (đã Masking) hoặc `null` nếu chưa cấu hình.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    nullable: true
+                    allOf:
+                      - $ref: "#/components/schemas/ApiKeyInfo"
+              examples:
+                configured:
+                  summary: Đã cấu hình API Key
+                  value:
+                    data:
+                      id: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+                      exchange: "Binance"
+                      api_key_masked: "****************************Eh8A"
+                      status: "Connected"
+                      updated_at: "2026-02-28T10:00:00Z"
+                notConfigured:
+                  summary: Chưa cấu hình
+                  value:
+                    data: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    delete:
+      tags:
+        - Exchange
+      operationId: deleteApiKeys
+      summary: Xóa cấu hình API Key
+      description: |
+        Xóa cấu hình khóa API hiện tại. Hệ thống xóa hoàn toàn bản ghi API Key (bao gồm
+        cả Secret Key đã mã hóa) khỏi Database. Sau khi xóa, trạng thái chuyển về
+        "Chưa kết nối".
+
+        **Ràng buộc:** Không thể xóa cấu hình khi còn Bot đang chạy (trạng thái `Running`).
+        Phải dừng tất cả Bot trước khi xóa.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Đã xóa cấu hình kết nối sàn.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                message: "Đã xóa cấu hình kết nối sàn."
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Không thể xóa cấu hình khi còn Bot đang chạy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "ACTIVE_BOTS_EXIST"
+                  message: "Không thể xóa cấu hình khi còn Bot đang chạy. Vui lòng dừng tất cả Bot trước."
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /strategies:
+    get:
+      tags:
+        - Strategies
+      operationId: listStrategies
+      summary: Lấy danh sách chiến lược giao dịch
+      description: |
+        Lấy danh sách tất cả chiến lược giao dịch của người dùng. Hỗ trợ phân trang
+        và tìm kiếm theo tên để đảm bảo tốc độ tải trang nhanh khi có nhiều chiến lược.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Số trang hiện tại.
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: limit
+          in: query
+          description: Số bản ghi mỗi trang.
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: search
+          in: query
+          description: Lọc chiến lược theo tên (tìm kiếm gần đúng / ILIKE).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Trả về danh sách chiến lược kèm thông tin phân trang.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StrategySummary"
+                  pagination:
+                    $ref: "#/components/schemas/PagePagination"
+              example:
+                data:
+                  - id: "c3d4e5f6-a7b8-9012-cdef-123456789012"
+                    name: "EMA Crossover Strategy"
+                    version: 3
+                    status: "Valid"
+                    created_at: "2026-02-01T08:00:00Z"
+                    updated_at: "2026-02-25T14:30:00Z"
+                  - id: "d4e5f6a7-b8c9-0123-defa-234567890123"
+                    name: "RSI Reversal"
+                    version: 1
+                    status: "Draft"
+                    created_at: "2026-02-20T10:00:00Z"
+                    updated_at: "2026-02-20T10:00:00Z"
+                pagination:
+                  page: 1
+                  limit: 20
+                  total: 2
+                  total_pages: 1
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      tags:
+        - Strategies
+      operationId: createStrategy
+      summary: Tạo mới chiến lược giao dịch
+      description: |
+        Tạo mới một chiến lược giao dịch. Backend thực hiện Validation:
+        - Kiểm tra sự tồn tại của khối Sự kiện (Event Trigger) trong `logic_json`.
+        - Kiểm tra tính liên kết của các khối lệnh.
+
+        Phiên bản khởi tạo mặc định là `1`. `logic_json` chứa cấu trúc khối logic
+        Blockly dưới định dạng JSON.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStrategyRequest"
+            example:
+              name: "EMA Crossover Strategy"
+              logic_json:
+                blocks:
+                  languageVersion: 0
+                  blocks:
+                    - type: "event_on_candle_close"
+                      fields:
+                        TIMEFRAME: "15m"
+                      next:
+                        block:
+                          type: "indicator_ema"
+                          fields:
+                            PERIOD: 9
+                            SOURCE: "close"
+              status: "Valid"
+      responses:
+        "201":
+          description: Lưu chiến lược thành công.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: "#/components/schemas/StrategyCreated"
+              example:
+                message: "Lưu chiến lược thành công."
+                data:
+                  id: "c3d4e5f6-a7b8-9012-cdef-123456789012"
+                  name: "EMA Crossover Strategy"
+                  version: 1
+                  status: "Valid"
+                  created_at: "2026-02-28T10:00:00Z"
+        "400":
+          description: >-
+            Dữ liệu đầu vào không hợp lệ — thiếu khối Sự kiện (Event Trigger),
+            JSON structure không đúng, hoặc thiếu trường bắt buộc.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missingEventTrigger:
+                  summary: Thiếu khối Sự kiện
+                  value:
+                    error:
+                      code: "MISSING_EVENT_TRIGGER"
+                      message: "Chiến lược phải bắt đầu bằng khối Sự kiện (Event Trigger)."
+                invalidJson:
+                  summary: JSON structure không hợp lệ
+                  value:
+                    error:
+                      code: "INVALID_JSON_STRUCTURE"
+                      message: "Cấu trúc file JSON không hợp lệ. Vui lòng kiểm tra lại định dạng."
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /strategies/{id}:
+    get:
+      tags:
+        - Strategies
+      operationId: getStrategy
+      summary: Lấy chi tiết chiến lược
+      description: |
+        Lấy chi tiết một chiến lược, bao gồm toàn bộ cấu trúc khối logic JSON (Blockly).
+
+        Nếu chiến lược đang được sử dụng bởi Bot đang chạy (trạng thái `Running`), Response
+        sẽ kèm trường `warning` và `active_bot_ids` để Frontend hiển thị Banner cảnh báo.
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StrategyId"
+      responses:
+        "200":
+          description: Trả về chi tiết chiến lược kèm logic JSON.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/StrategyDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Chiến lược không tồn tại.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "STRATEGY_NOT_FOUND"
+                  message: "Chiến lược không tồn tại."
+
+    put:
+      tags:
+        - Strategies
+      operationId: updateStrategy
+      summary: Cập nhật chiến lược
+      description: |
+        Cập nhật chiến lược hiện có. Mỗi lần cập nhật thành công, `version` tự động tăng
+        lên 1 đơn vị phục vụ Audit Log.
+
+        Nếu chiến lược đang được sử dụng bởi Bot đang chạy, hệ thống **vẫn cho phép lưu**
+        nhưng kèm cảnh báo: thay đổi chỉ áp dụng cho các phiên chạy mới (Bot đang chạy
+        sử dụng Snapshot version cũ).
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StrategyId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStrategyRequest"
+            example:
+              name: "EMA Crossover v2"
+              logic_json:
+                blocks:
+                  languageVersion: 0
+                  blocks:
+                    - type: "event_on_candle_close"
+                      fields:
+                        TIMEFRAME: "1h"
+                      next:
+                        block:
+                          type: "indicator_ema"
+                          fields:
+                            PERIOD: 21
+                            SOURCE: "close"
+      responses:
+        "200":
+          description: Cập nhật chiến lược thành công.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: "#/components/schemas/StrategyUpdated"
+              example:
+                message: "Cập nhật chiến lược thành công."
+                data:
+                  id: "c3d4e5f6-a7b8-9012-cdef-123456789012"
+                  name: "EMA Crossover v2"
+                  version: 4
+                  status: "Valid"
+                  warning: "Chiến lược này đang được sử dụng bởi Bot đang chạy. Các thay đổi của bạn sẽ chỉ áp dụng cho các phiên chạy mới."
+                  updated_at: "2026-02-28T11:00:00Z"
+        "400":
+          description: Dữ liệu đầu vào không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Chiến lược không tồn tại.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "STRATEGY_NOT_FOUND"
+                  message: "Chiến lược không tồn tại."
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    delete:
+      tags:
+        - Strategies
+      operationId: deleteStrategy
+      summary: Xóa chiến lược
+      description: |
+        Xóa một chiến lược khỏi hệ thống.
+
+        **Ràng buộc toàn vẹn dữ liệu:** Hệ thống bắt buộc kiểm tra — nếu chiến lược
+        đang được sử dụng bởi Bot có trạng thái `Running`, thao tác xóa bị **chặn hoàn toàn**
+        và trả về lỗi `409 Conflict`. Người dùng phải dừng tất cả Bot liên quan trước khi xóa.
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StrategyId"
+      responses:
+        "200":
+          description: Đã xóa chiến lược thành công.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                message: "Đã xóa chiến lược thành công."
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Chiến lược không tồn tại.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "STRATEGY_NOT_FOUND"
+                  message: "Chiến lược không tồn tại."
+        "409":
+          description: >-
+            Chiến lược đang được sử dụng bởi Bot đang chạy. Không thể xóa.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      error:
+                        type: object
+                        properties:
+                          active_bot_ids:
+                            type: array
+                            items:
+                              type: string
+                              format: uuid
+              example:
+                error:
+                  code: "STRATEGY_IN_USE"
+                  message: "Chiến lược đang được sử dụng bởi Bot [BTC Scalper]. Vui lòng dừng Bot trước khi xóa."
+                  active_bot_ids:
+                    - "e5f6a7b8-c9d0-1234-efab-345678901234"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /strategies/import:
+    post:
+      tags:
+        - Strategies
+      operationId: importStrategy
+      summary: Nhập chiến lược từ file JSON
+      description: |
+        Nhập chiến lược từ file JSON. Hệ thống kiểm tra cấu trúc file (Validate JSON Schema),
+        nếu hợp lệ thì tạo một bản ghi chiến lược mới trong Database với nội dung từ file.
+        Phiên bản mặc định là `1`.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportStrategyRequest"
+            example:
+              name: "Imported - EMA Strategy"
+              logic_json:
+                blocks:
+                  languageVersion: 0
+                  blocks:
+                    - type: "event_on_candle_close"
+                      fields:
+                        TIMEFRAME: "15m"
+      responses:
+        "201":
+          description: Nhập chiến lược thành công.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: "#/components/schemas/StrategyCreated"
+              example:
+                message: "Nhập chiến lược thành công."
+                data:
+                  id: "f6a7b8c9-d0e1-2345-fgab-456789012345"
+                  name: "Imported - EMA Strategy"
+                  version: 1
+                  status: "Valid"
+                  created_at: "2026-02-28T12:00:00Z"
+        "400":
+          description: Cấu trúc JSON không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "INVALID_JSON_STRUCTURE"
+                  message: "Cấu trúc file JSON không hợp lệ. Vui lòng kiểm tra lại định dạng."
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /strategies/{id}/export:
+    get:
+      tags:
+        - Strategies
+      operationId: exportStrategy
+      summary: Xuất chiến lược ra file JSON
+      description: |
+        Xuất chiến lược ra file JSON. Backend trả về nội dung JSON đầy đủ của chiến lược
+        kèm header `Content-Disposition` để Frontend trigger tải file `.json` về máy.
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StrategyId"
+      responses:
+        "200":
+          description: Trả về nội dung JSON chiến lược để tải xuống.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: 'attachment; filename="ema-crossover-strategy.json"'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StrategyExport"
+              example:
+                name: "EMA Crossover Strategy"
+                logic_json:
+                  blocks:
+                    languageVersion: 0
+                    blocks:
+                      - type: "event_on_candle_close"
+                        fields:
+                          TIMEFRAME: "15m"
+                        next:
+                          block:
+                            type: "indicator_ema"
+                            fields:
+                              PERIOD: 9
+                              SOURCE: "close"
+                version: 3
+                exported_at: "2026-02-28T12:30:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Chiến lược không tồn tại.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "STRATEGY_NOT_FOUND"
+                  message: "Chiến lược không tồn tại."
+
+  /backtests:
+    post:
+      tags:
+        - Backtests
+      operationId: createBacktest
+      summary: Khởi tạo phiên Backtest mới
+      description: |
+        Khởi tạo phiên Backtest mới. Backend tải dữ liệu nến lịch sử từ Database
+        (hoặc tự động lấp đầy từ Binance API nếu thiếu — On-demand Sync), chạy logic
+        chiến lược, giả lập khớp lệnh và tổng hợp kết quả.
+
+        **Cơ chế giả lập khớp lệnh:**
+        - Lệnh **Market**: Giả định khớp tại giá Open nến tiếp theo.
+        - Lệnh **Limit**: Khớp dựa trên giá High/Low trong khung thời gian đã chọn.
+
+        **Cơ chế Unit Cost:**
+        - Mỗi khối lệnh khi chạy tốn 1 lượng Unit.
+        - Mỗi Session giới hạn tối đa `max_unit` (mặc định 1000). Vượt quá sẽ cưỡng chế
+          dừng Session đó.
+
+        Request bao gồm đầy đủ tham số cấu hình giả lập: Strategy ID, Symbol, Timeframe,
+        Time Range, Vốn ban đầu (Initial Capital), Phí giao dịch (Fee) và giới hạn Unit.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBacktestRequest"
+            example:
+              strategy_id: "c3d4e5f6-a7b8-9012-cdef-123456789012"
+              symbol: "BTCUSDT"
+              timeframe: "15m"
+              start_time: "2025-01-01T00:00:00Z"
+              end_time: "2025-12-31T23:59:59Z"
+              initial_capital: 1000
+              fee_rate: 0.04
+              max_unit: 1000
+      responses:
+        "201":
+          description: Phiên Backtest đã được khởi tạo và đang xử lý.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: "#/components/schemas/BacktestCreated"
+              example:
+                message: "Phiên Backtest đã được khởi tạo."
+                data:
+                  backtest_id: "a7b8c9d0-e1f2-3456-abcd-567890123456"
+                  status: "processing"
+                  created_at: "2026-02-28T10:00:00Z"
+        "400":
+          description: Thiếu tham số bắt buộc hoặc giá trị không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "MISSING_REQUIRED_FIELDS"
+                  message: "Vui lòng cung cấp đầy đủ các tham số: strategy_id, symbol, timeframe, start_time, end_time, initial_capital, fee_rate."
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Chiến lược không tồn tại.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "STRATEGY_NOT_FOUND"
+                  message: "Chiến lược không tồn tại."
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /backtests/{id}:
+    get:
+      tags:
+        - Backtests
+      operationId: getBacktestResult
+      summary: Lấy kết quả chi tiết phiên Backtest
+      description: |
+        Lấy kết quả chi tiết của phiên Backtest. Bao gồm thống kê tổng quan
+        (Total PnL, Win Rate, Max Drawdown, Profit Factor), dữ liệu Equity Curve
+        phục vụ vẽ biểu đồ Mini-Chart, và danh sách lệnh đã giả lập.
+
+        Nếu phiên Backtest đang xử lý, trả về trạng thái `processing` kèm `progress` (%).
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/BacktestId"
+      responses:
+        "200":
+          description: Trả về kết quả Backtest (hoàn tất hoặc đang xử lý).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/BacktestResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Phiên Backtest không tồn tại.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "BACKTEST_NOT_FOUND"
+                  message: "Phiên Backtest không tồn tại."
+
+  /backtests/{id}/cancel:
+    post:
+      tags:
+        - Backtests
+      operationId: cancelBacktest
+      summary: Hủy phiên Backtest đang chạy
+      description: |
+        Hủy bỏ phiên Backtest đang chạy giữa chừng. Hệ thống dừng tiến trình xử lý
+        và giải phóng tài nguyên. Giao diện quay về trạng thái nhập liệu cấu hình.
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/BacktestId"
+      responses:
+        "200":
+          description: Đã hủy phiên Backtest.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                message: "Đã hủy phiên Backtest."
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Phiên Backtest không tồn tại.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "BACKTEST_NOT_FOUND"
+                  message: "Phiên Backtest không tồn tại."
+
+  /bots:
+    get:
+      tags:
+        - Bots
+      operationId: listBots
+      summary: Lấy danh sách Bot
+      description: |
+        Lấy danh sách tất cả Bot của người dùng. Mỗi Bot trả về thông tin tóm tắt gồm:
+        tên Bot, chiến lược sử dụng, cặp tiền, trạng thái hoạt động và tổng PnL.
+        Hỗ trợ lọc theo trạng thái.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: "Lọc theo trạng thái Bot. Bỏ trống = tất cả."
+          schema:
+            type: string
+            enum:
+              - Running
+              - Stopped
+              - Error
+      responses:
+        "200":
+          description: Trả về danh sách Bot.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/BotSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      tags:
+        - Bots
+      operationId: createBot
+      summary: Khởi tạo Bot mới từ mẫu chiến lược
+      description: |
+        Khởi tạo một Bot mới từ mẫu chiến lược có sẵn. Hệ thống thực hiện **Snapshot
+        (Deep Copy)** logic chiến lược và ghi lại `strategy_version` tại thời điểm tạo.
+        Bot được khởi tạo với trạng thái `Running` và bắt đầu chạy ngầm ngay lập tức.
+
+        **Điều kiện tiên quyết:**
+        - Đã cấu hình API Key (trạng thái `Connected`).
+        - Có ít nhất một chiến lược hợp lệ (trạng thái `Valid`).
+        - Tài khoản Binance Futures có số dư khả dụng.
+
+        **Quy tắc nghiệp vụ — Logic-driven Configuration:**
+        Backend tự động đọc tham số Leverage và Margin Type từ khối Smart Order
+        trong JSON chiến lược và gửi API lên Binance để cấu hình trước khi đặt lệnh.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBotRequest"
+            example:
+              bot_name: "BTC Scalper"
+              strategy_id: "c3d4e5f6-a7b8-9012-cdef-123456789012"
+              symbol: "BTCUSDT"
+      responses:
+        "201":
+          description: Bot đã được khởi tạo và bắt đầu chạy.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: "#/components/schemas/BotCreated"
+              example:
+                message: "Bot đã được khởi tạo và bắt đầu chạy."
+                data:
+                  id: "e5f6a7b8-c9d0-1234-efab-345678901234"
+                  bot_name: "BTC Scalper"
+                  strategy_id: "c3d4e5f6-a7b8-9012-cdef-123456789012"
+                  strategy_version: 3
+                  symbol: "BTCUSDT"
+                  status: "Running"
+                  total_pnl: 0
+                  created_at: "2026-02-28T10:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Chiến lược không tồn tại.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "STRATEGY_NOT_FOUND"
+                  message: "Chiến lược không tồn tại."
+        "422":
+          description: Chưa cấu hình kết nối sàn hoặc chiến lược không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                notConfigured:
+                  summary: Chưa cấu hình API Key
+                  value:
+                    error:
+                      code: "EXCHANGE_NOT_CONFIGURED"
+                      message: "Chưa cấu hình kết nối sàn. Vui lòng thiết lập API Key trước khi khởi tạo Bot."
+                invalidStrategy:
+                  summary: Chiến lược không hợp lệ
+                  value:
+                    error:
+                      code: "STRATEGY_INVALID"
+                      message: "Chiến lược đang ở trạng thái Draft. Vui lòng kiểm tra và lưu chiến lược với trạng thái Valid."
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /bots/{id}:
+    get:
+      tags:
+        - Bots
+      operationId: getBot
+      summary: Lấy chi tiết Bot
+      description: |
+        Lấy chi tiết một Bot, bao gồm thông tin vị thế hiện tại (Position), danh sách
+        lệnh chờ (Open Orders) và trạng thái hoạt động. Dữ liệu PnL chưa chốt
+        (Unrealized PnL) và trạng thái lệnh được đồng bộ thời gian thực từ sàn.
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/BotId"
+      responses:
+        "200":
+          description: Trả về chi tiết Bot kèm vị thế và lệnh chờ.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/BotDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Bot không tồn tại.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "BOT_NOT_FOUND"
+                  message: "Bot không tồn tại."
+
+    delete:
+      tags:
+        - Bots
+      operationId: deleteBot
+      summary: Xóa Bot
+      description: |
+        Xóa một Bot khỏi hệ thống. Chỉ cho phép xóa Bot có trạng thái `Stopped`.
+        Nếu Bot đang `Running`, phải dừng trước khi xóa.
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/BotId"
+      responses:
+        "200":
+          description: Đã xóa Bot thành công.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                message: "Đã xóa Bot thành công."
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Bot không tồn tại.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "BOT_NOT_FOUND"
+                  message: "Bot không tồn tại."
+        "409":
+          description: Bot đang chạy, không thể xóa.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "BOT_STILL_RUNNING"
+                  message: "Không thể xóa Bot đang chạy. Vui lòng dừng Bot trước."
+
+  /bots/{id}/start:
+    post:
+      tags:
+        - Bots
+      operationId: startBot
+      summary: Khởi động lại Bot
+      description: |
+        Khởi động lại một Bot đã dừng (`Stopped`). Hệ thống đọc trạng thái đã lưu trong
+        Database để biết Bot đang giữ vị thế nào (nếu có) và tiếp tục vận hành từ trạng
+        thái đó, thay vì bắt đầu lại từ con số 0 (Data Integrity).
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/BotId"
+      responses:
+        "200":
+          description: Bot đã được khởi động lại.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: "#/components/schemas/BotStatusUpdate"
+              example:
+                message: "Bot đã được khởi động lại."
+                data:
+                  id: "e5f6a7b8-c9d0-1234-efab-345678901234"
+                  status: "Running"
+                  updated_at: "2026-02-28T13:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Bot không tồn tại.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "BOT_NOT_FOUND"
+                  message: "Bot không tồn tại."
+        "409":
+          description: Bot đang chạy rồi, không thể khởi động lại.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "BOT_ALREADY_RUNNING"
+                  message: "Bot đang trong trạng thái Running."
+
+  /bots/{id}/stop:
+    post:
+      tags:
+        - Bots
+      operationId: stopBot
+      summary: Dừng Bot đang chạy
+      description: |
+        Dừng một Bot đang chạy. Hệ thống hỗ trợ hai phương án dừng:
+        1. **Dừng và Đóng vị thế** (`close_position: true`): Dừng Bot + đóng tất cả vị thế
+           đang mở + hủy lệnh chờ trên sàn Binance.
+        2. **Chỉ dừng Bot** (`close_position: false`, mặc định): Dừng Bot nhưng giữ nguyên
+           vị thế hiện tại trên sàn.
+
+        Trạng thái Bot chuyển sang `Stopped`.
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/BotId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StopBotRequest"
+            example:
+              close_position: true
+      responses:
+        "200":
+          description: Bot đã được dừng.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: "#/components/schemas/BotStopResult"
+              example:
+                message: "Bot đã được dừng và vị thế đã được đóng."
+                data:
+                  id: "e5f6a7b8-c9d0-1234-efab-345678901234"
+                  status: "Stopped"
+                  total_pnl: 125.45
+                  updated_at: "2026-02-28T12:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Bot không tồn tại.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "BOT_NOT_FOUND"
+                  message: "Bot không tồn tại."
+
+  /bots/{id}/logs:
+    get:
+      tags:
+        - Bots
+      operationId: getBotLogs
+      summary: Lấy nhật ký hoạt động Bot
+      description: |
+        Lấy lịch sử nhật ký hoạt động (Logs) của một Bot. Hỗ trợ phân trang dạng cuộn
+        (Cursor-based Pagination) để tải thêm log cũ hơn.
+
+        Khi mở giao diện Console Logs lần đầu, Frontend gọi endpoint này để tải lịch sử.
+
+        Mỗi dòng log hiển thị: Thời gian kích hoạt Session, Quyết định (Đặt lệnh / Bỏ qua),
+        và Số lượng Unit đã sử dụng.
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/BotId"
+        - name: cursor
+          in: query
+          description: >-
+            Con trỏ phân trang (ID log cuối cùng của trang trước). Bỏ trống = lấy log mới nhất.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Số dòng log mỗi lần tải.
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Trả về danh sách log kèm cursor phân trang.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/BotLogEntry"
+                  pagination:
+                    $ref: "#/components/schemas/CursorPagination"
+              example:
+                data:
+                  - id: 10542
+                    action_decision: "Đặt lệnh Long"
+                    unit_used: 15
+                    message: "RSI = 28.5 < 30 → Mở vị thế Long 0.01 BTC tại giá 64500.00"
+                    created_at: "2026-02-28T10:15:00Z"
+                  - id: 10541
+                    action_decision: "Bỏ qua"
+                    unit_used: 3
+                    message: "EMA9 = 64350 < EMA21 = 64400 → Chưa đủ điều kiện vào lệnh."
+                    created_at: "2026-02-28T10:00:00Z"
+                pagination:
+                  next_cursor: "10540"
+                  has_more: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Bot không tồn tại.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "BOT_NOT_FOUND"
+                  message: "Bot không tồn tại."
+
+  /trades:
+    get:
+      tags:
+        - Trades
+      operationId: listTrades
+      summary: Lấy lịch sử giao dịch
+      description: |
+        Lấy danh sách lịch sử giao dịch đã hoàn tất. Mặc định trả về các lệnh trong
+        **7 ngày gần nhất**. Dữ liệu là dữ liệu đã chốt (Realized), trích xuất từ
+        Database phục vụ đối soát khoản phí và lợi nhuận thực tế.
+
+        Hỗ trợ phân trang dạng cuộn (Infinite Scroll — Cursor-based Pagination) và lọc
+        theo nhiều tiêu chí: Bot ID, Symbol, Side, Status, khoảng thời gian.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: bot_id
+          in: query
+          description: "Lọc theo ID Bot. Bỏ trống = tất cả Bot."
+          schema:
+            type: string
+            format: uuid
+        - name: symbol
+          in: query
+          description: "Lọc theo cặp tiền (VD: BTCUSDT). Bỏ trống = tất cả symbol."
+          schema:
+            type: string
+        - name: side
+          in: query
+          description: "Lọc theo chiều giao dịch. Bỏ trống = tất cả."
+          schema:
+            type: string
+            enum:
+              - Long
+              - Short
+        - name: status
+          in: query
+          description: "Lọc theo trạng thái lệnh. Bỏ trống = tất cả."
+          schema:
+            type: string
+            enum:
+              - Filled
+              - Canceled
+        - name: start_date
+          in: query
+          description: "Lọc từ ngày (ISO 8601). Mặc định: 7 ngày trước."
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          description: "Lọc đến ngày (ISO 8601). Mặc định: thời điểm hiện tại."
+          schema:
+            type: string
+            format: date-time
+        - name: cursor
+          in: query
+          description: >-
+            Con trỏ phân trang (ID lệnh cuối cùng) phục vụ Infinite Scroll. Bỏ trống = trang đầu.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Số bản ghi mỗi lần tải.
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Trả về danh sách lịch sử giao dịch kèm cursor phân trang.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TradeRecord"
+                  pagination:
+                    $ref: "#/components/schemas/CursorPagination"
+                  message:
+                    type: string
+                    description: Thông báo bổ sung (khi không có dữ liệu).
+              examples:
+                withData:
+                  summary: Có dữ liệu
+                  value:
+                    data:
+                      - id: "t1a2b3c4-d5e6-7890-abcd-ef1234567890"
+                        bot_id: "e5f6a7b8-c9d0-1234-efab-345678901234"
+                        bot_name: "BTC Scalper"
+                        symbol: "BTCUSDT"
+                        side: "Long"
+                        quantity: 0.01
+                        fill_price: 64500.00
+                        fee: 0.26
+                        realized_pnl: 5.74
+                        status: "Filled"
+                        executed_at: "2026-02-28T10:15:30Z"
+                    pagination:
+                      next_cursor: "t3c4d5e6-f7a8-9012-cdef-234567890123"
+                      has_more: true
+                empty:
+                  summary: Không có dữ liệu
+                  value:
+                    data: []
+                    pagination:
+                      next_cursor: null
+                      has_more: false
+                    message: "Chưa có lịch sử giao dịch nào."
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /trades/export:
+    get:
+      tags:
+        - Trades
+      operationId: exportTrades
+      summary: Xuất lịch sử giao dịch ra file CSV
+      description: |
+        Xuất toàn bộ lịch sử giao dịch ra file CSV (theo bộ lọc hiện hành). Frontend nhận
+        file từ Response để trigger download. File CSV bao gồm các cột: ID, Bot, Symbol,
+        Side, Quantity, Fill Price, Fee, Realized PnL, Status, Executed At.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: bot_id
+          in: query
+          description: Lọc theo Bot ID.
+          schema:
+            type: string
+            format: uuid
+        - name: symbol
+          in: query
+          description: Lọc theo cặp tiền.
+          schema:
+            type: string
+        - name: start_date
+          in: query
+          description: Lọc từ ngày (ISO 8601).
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          description: Lọc đến ngày (ISO 8601).
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Trả về file CSV lịch sử giao dịch.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: 'attachment; filename="trade-history-20260228.csv"'
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /market/symbols:
+    get:
+      tags:
+        - Market
+      operationId: listMarketSymbols
+      summary: Lấy danh sách cặp tiền hỗ trợ giao dịch (Market Watch)
+      description: |
+        Lấy danh sách các cặp tiền mã hóa hỗ trợ giao dịch trên hệ thống. Mỗi symbol
+        kèm theo giá hiện tại, phần trăm thay đổi 24h và khối lượng giao dịch 24h.
+
+        Hỗ trợ tìm kiếm cặp tiền theo từ khóa (VD: `BTC`).
+
+        Dữ liệu giá biến động được Backend nhận từ sàn Binance và cung cấp cho Frontend.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: search
+          in: query
+          description: "Tìm kiếm cặp tiền theo từ khóa (VD: BTC). Bỏ trống = tất cả."
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Trả về danh sách cặp tiền.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MarketSymbol"
+              example:
+                data:
+                  - symbol: "BTCUSDT"
+                    last_price: 64500.00
+                    price_change_percent: 2.35
+                    volume_24h: 28543219000.50
+                  - symbol: "ETHUSDT"
+                    last_price: 3420.50
+                    price_change_percent: -1.20
+                    volume_24h: 12874562000.80
+                  - symbol: "SOLUSDT"
+                    last_price: 142.30
+                    price_change_percent: 5.67
+                    volume_24h: 4521890000.25
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /market/candles:
+    get:
+      tags:
+        - Market
+      operationId: getMarketCandles
+      summary: Lấy dữ liệu nến lịch sử (OHLCV)
+      description: |
+        Lấy dữ liệu nến lịch sử (OHLCV) của một cặp tiền. Backend tải từ Database,
+        nếu khoảng thời gian yêu cầu chưa có, hệ thống tự động gọi REST API Binance
+        để tải về (On-demand Sync).
+
+        Dữ liệu trả về kèm theo danh sách **Trade Markers** (điểm khớp lệnh) của các
+        Bot đang chạy trên cặp tiền này để trực quan hóa trên biểu đồ.
+
+        Markers được gắn chính xác vào tọa độ thời gian (Timestamp) và mức giá (Price)
+        thực tế mà lệnh đã khớp trên sàn.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          description: Cặp tiền mã hóa (VD `BTCUSDT`).
+          schema:
+            type: string
+        - name: timeframe
+          in: query
+          required: true
+          description: "Khung thời gian nến."
+          schema:
+            type: string
+            enum:
+              - 1m
+              - 5m
+              - 15m
+              - 1h
+              - 4h
+              - 1D
+        - name: start
+          in: query
+          description: "Thời gian bắt đầu (ISO 8601). Mặc định: 500 nến gần nhất."
+          schema:
+            type: string
+            format: date-time
+        - name: end
+          in: query
+          description: "Thời gian kết thúc (ISO 8601). Mặc định: hiện tại."
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          description: Số lượng nến tối đa.
+          schema:
+            type: integer
+            default: 500
+            minimum: 1
+            maximum: 1500
+      responses:
+        "200":
+          description: Trả về dữ liệu nến kèm Trade Markers.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CandleData"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "400":
+          description: Thiếu tham số bắt buộc (symbol, timeframe).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "MISSING_REQUIRED_FIELDS"
+                  message: "Vui lòng cung cấp tham số symbol và timeframe."
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: token
+      description: |
+        JWT Token được lưu trong HttpOnly Cookie có tên `token`. Sau khi đăng nhập
+        thành công, Backend gắn token vào header `Set-Cookie`. Trình duyệt tự động
+        gửi Cookie này trong mọi request tiếp theo.
+
+        Đặc tính:
+        - **HttpOnly**: JavaScript phía Client không đọc được (chống XSS).
+        - **Secure**: Chỉ gửi qua HTTPS (Production).
+        - **SameSite=Lax**: Giảm thiểu CSRF.
+        - **Max-Age**: 86400 giây (24 giờ).
+
+  responses:
+    BadRequest:
+      description: >-
+        Dữ liệu đầu vào không hợp lệ. Thiếu trường bắt buộc, sai định dạng JSON,
+        hoặc vi phạm ràng buộc validation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: "BAD_REQUEST"
+              message: "Dữ liệu đầu vào không hợp lệ."
+
+    Unauthorized:
+      description: >-
+        Chưa xác thực hoặc phiên làm việc đã hết hạn. JWT Token không hợp lệ
+        hoặc không tồn tại trong Cookie.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: "SESSION_EXPIRED"
+              message: "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại."
+
+    Forbidden:
+      description: >-
+        Đã xác thực nhưng không có quyền truy cập tài nguyên. Ví dụ: tài khoản
+        bị khóa do đăng nhập sai quá 5 lần.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: "ACCESS_DENIED"
+              message: "Bạn không có quyền truy cập tài nguyên này."
+
+    NotFound:
+      description: >-
+        Tài nguyên không tồn tại. Ví dụ: Strategy ID, Bot ID không tìm thấy
+        trong hệ thống.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: "RESOURCE_NOT_FOUND"
+              message: "Tài nguyên không tồn tại."
+
+    Conflict:
+      description: >-
+        Xung đột khi thực hiện thao tác. Ví dụ: xóa Strategy đang được sử dụng
+        bởi Bot đang chạy, hoặc xóa Bot đang Running.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: "CONFLICT"
+              message: "Xung đột khi thực hiện thao tác."
+
+    TooManyRequests:
+      description: >-
+        Vượt quá giới hạn tần suất gọi API. Hệ thống áp dụng Rate Limiting
+        để bảo vệ Backend và tuân thủ Weight của Binance.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: "RATE_LIMIT_EXCEEDED"
+              message: "Bạn đã gửi quá nhiều request. Vui lòng thử lại sau."
+
+    InternalServerError:
+      description: >-
+        Lỗi nội bộ hệ thống. Ví dụ: mất kết nối Database, lỗi mã hóa/giải mã
+        Secret Key, hoặc lỗi không lường trước từ Backend.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: "INTERNAL_ERROR"
+              message: "Lỗi kỹ thuật. Vui lòng thử lại sau."
+
+  parameters:
+    StrategyId:
+      name: id
+      in: path
+      required: true
+      description: ID của chiến lược (UUID).
+      schema:
+        type: string
+        format: uuid
+
+    BacktestId:
+      name: id
+      in: path
+      required: true
+      description: ID của phiên Backtest (UUID).
+      schema:
+        type: string
+        format: uuid
+
+    BotId:
+      name: id
+      in: path
+      required: true
+      description: ID của Bot (UUID).
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: Mã lỗi dạng UPPER_SNAKE_CASE.
+              example: "ERROR_CODE"
+            message:
+              type: string
+              description: Mô tả lỗi chi tiết bằng tiếng Việt.
+              example: "Mô tả lỗi chi tiết."
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      example:
+        message: "Thao tác thành công."
+
+    PagePagination:
+      type: object
+      description: Thông tin phân trang dạng Page-based.
+      properties:
+        page:
+          type: integer
+          description: Trang hiện tại.
+          example: 1
+        limit:
+          type: integer
+          description: Số bản ghi mỗi trang.
+          example: 20
+        total:
+          type: integer
+          description: Tổng số bản ghi.
+          example: 42
+        total_pages:
+          type: integer
+          description: Tổng số trang.
+          example: 3
+
+    CursorPagination:
+      type: object
+      description: Thông tin phân trang dạng Cursor-based (Infinite Scroll).
+      properties:
+        next_cursor:
+          type: string
+          nullable: true
+          description: Con trỏ đến trang tiếp theo. `null` nếu không còn dữ liệu.
+          example: "10540"
+        has_more:
+          type: boolean
+          description: Còn dữ liệu phía sau hay không.
+          example: true
+
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          description: Tên đăng nhập.
+          example: "admin"
+        password:
+          type: string
+          format: password
+          description: Mật khẩu người dùng.
+          example: "MySecureP@ssw0rd"
+
+    UserBasic:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID người dùng.
+        username:
+          type: string
+          description: Tên đăng nhập.
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID người dùng.
+        username:
+          type: string
+          description: Tên đăng nhập.
+        created_at:
+          type: string
+          format: date-time
+          description: Thời gian tạo tài khoản.
+
+    UpdateProfileRequest:
+      type: object
+      required:
+        - current_password
+      properties:
+        current_password:
+          type: string
+          format: password
+          description: Mật khẩu hiện tại (bắt buộc để xác thực quyền thay đổi).
+        new_username:
+          type: string
+          description: Tên đăng nhập mới. Bỏ trống nếu chỉ đổi mật khẩu.
+          maxLength: 50
+        new_password:
+          type: string
+          format: password
+          description: Mật khẩu mới. Bỏ trống nếu chỉ đổi tên đăng nhập.
+        confirm_password:
+          type: string
+          format: password
+          description: Nhập lại mật khẩu mới (bắt buộc nếu có `new_password`).
+
+    SaveApiKeysRequest:
+      type: object
+      required:
+        - api_key
+        - secret_key
+      properties:
+        exchange:
+          type: string
+          description: Tên sàn giao dịch.
+          default: "Binance"
+          example: "Binance"
+        api_key:
+          type: string
+          description: Khóa API công khai (Access Key) từ sàn Binance.
+        secret_key:
+          type: string
+          writeOnly: true
+          description: >-
+            Khóa bí mật (Secret Key) từ sàn Binance. **Write-Only** — chỉ cho phép
+            nhập, tuyệt đối không trả về trong bất kỳ Response nào. Được mã hóa
+            AES-256-GCM trước khi lưu vào Database.
+
+    ApiKeyInfo:
+      type: object
+      description: Thông tin cấu hình API Key (đã Masking — Secret Key không bao giờ trả về).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID bản ghi API Key.
+        exchange:
+          type: string
+          description: Tên sàn giao dịch.
+          example: "Binance"
+        api_key_masked:
+          type: string
+          description: >-
+            API Key đã che (Masking: hiển thị 4 ký tự cuối, phần còn lại thay bằng `*`).
+          example: "****************************Eh8A"
+        status:
+          type: string
+          description: "Trạng thái kết nối sàn."
+          enum:
+            - Connected
+            - Revoked
+          example: "Connected"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BlocklyLogicJson:
+      type: object
+      description: >-
+        Cấu trúc khối logic Blockly dưới định dạng JSON. Chứa toàn bộ thông tin
+        về các khối lệnh, vị trí, liên kết và tham số cấu hình.
+      properties:
+        blocks:
+          type: object
+          properties:
+            languageVersion:
+              type: integer
+              example: 0
+            blocks:
+              type: array
+              items:
+                type: object
+                description: Khối lệnh Blockly (đệ quy).
+                additionalProperties: true
+
+    CreateStrategyRequest:
+      type: object
+      required:
+        - name
+        - logic_json
+      properties:
+        name:
+          type: string
+          description: Tên chiến lược. Tối đa 100 ký tự.
+          maxLength: 100
+        logic_json:
+          $ref: "#/components/schemas/BlocklyLogicJson"
+        status:
+          type: string
+          description: "Trạng thái chiến lược."
+          enum:
+            - Valid
+            - Draft
+          default: "Valid"
+
+    ImportStrategyRequest:
+      type: object
+      required:
+        - name
+        - logic_json
+      properties:
+        name:
+          type: string
+          description: Tên chiến lược khi nhập.
+          maxLength: 100
+        logic_json:
+          $ref: "#/components/schemas/BlocklyLogicJson"
+
+    UpdateStrategyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Tên chiến lược mới.
+          maxLength: 100
+        logic_json:
+          $ref: "#/components/schemas/BlocklyLogicJson"
+        status:
+          type: string
+          description: "Trạng thái mới."
+          enum:
+            - Valid
+            - Draft
+
+    StrategySummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        version:
+          type: integer
+          description: Phiên bản hiện tại (tăng dần mỗi lần cập nhật).
+        status:
+          type: string
+          enum:
+            - Valid
+            - Draft
+            - Archived
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    StrategyDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        version:
+          type: integer
+        status:
+          type: string
+          enum:
+            - Valid
+            - Draft
+            - Archived
+        logic_json:
+          $ref: "#/components/schemas/BlocklyLogicJson"
+        warning:
+          type: string
+          nullable: true
+          description: >-
+            Cảnh báo khi chiến lược đang được sử dụng bởi Bot đang chạy.
+            Chỉ xuất hiện khi có ít nhất một Bot trạng thái Running.
+        active_bot_ids:
+          type: array
+          nullable: true
+          description: Danh sách ID Bot đang sử dụng chiến lược này (trạng thái Running).
+          items:
+            type: string
+            format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    StrategyCreated:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        version:
+          type: integer
+          example: 1
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    StrategyUpdated:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        version:
+          type: integer
+        status:
+          type: string
+        warning:
+          type: string
+          nullable: true
+          description: Cảnh báo nếu chiến lược đang được Bot đang chạy sử dụng.
+        updated_at:
+          type: string
+          format: date-time
+
+    StrategyExport:
+      type: object
+      properties:
+        name:
+          type: string
+        logic_json:
+          $ref: "#/components/schemas/BlocklyLogicJson"
+        version:
+          type: integer
+        exported_at:
+          type: string
+          format: date-time
+
+    CreateBacktestRequest:
+      type: object
+      required:
+        - strategy_id
+        - symbol
+        - timeframe
+        - start_time
+        - end_time
+        - initial_capital
+        - fee_rate
+      properties:
+        strategy_id:
+          type: string
+          format: uuid
+          description: ID chiến lược dùng để chạy Backtest.
+        symbol:
+          type: string
+          description: "Cặp tiền mã hóa (VD: BTCUSDT)."
+          example: "BTCUSDT"
+        timeframe:
+          type: string
+          description: Khung thời gian nến.
+          enum:
+            - 1m
+            - 5m
+            - 15m
+            - 1h
+            - 4h
+            - 1D
+          example: "15m"
+        start_time:
+          type: string
+          format: date-time
+          description: "Thời gian bắt đầu (ISO 8601)."
+          example: "2025-01-01T00:00:00Z"
+        end_time:
+          type: string
+          format: date-time
+          description: "Thời gian kết thúc (ISO 8601)."
+          example: "2025-12-31T23:59:59Z"
+        initial_capital:
+          type: number
+          format: double
+          description: "Vốn giả lập ban đầu (đơn vị: USDT)."
+          example: 1000
+        fee_rate:
+          type: number
+          format: double
+          description: "Phí giao dịch giả lập mỗi lệnh (%). VD: 0.04 = 0.04%."
+          example: 0.04
+        max_unit:
+          type: integer
+          description: Giới hạn Unit cho mỗi phiên chạy (Unit Cost mechanism).
+          default: 1000
+          example: 1000
+
+    BacktestCreated:
+      type: object
+      properties:
+        backtest_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - processing
+            - completed
+            - canceled
+          example: "processing"
+        created_at:
+          type: string
+          format: date-time
+
+    BacktestResult:
+      type: object
+      description: >-
+        Kết quả phiên Backtest. Nếu `status=processing`, chỉ trả về `progress`.
+        Nếu `status=completed`, trả về đầy đủ summary, equity_curve và trades.
+      properties:
+        backtest_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - processing
+            - completed
+            - canceled
+        progress:
+          type: integer
+          description: Tiến trình xử lý (%) — chỉ xuất hiện khi `status=processing`.
+          minimum: 0
+          maximum: 100
+        config:
+          type: object
+          description: Cấu hình Backtest đã sử dụng.
+          properties:
+            strategy_id:
+              type: string
+              format: uuid
+            strategy_name:
+              type: string
+            symbol:
+              type: string
+            timeframe:
+              type: string
+            start_time:
+              type: string
+              format: date-time
+            end_time:
+              type: string
+              format: date-time
+            initial_capital:
+              type: number
+            fee_rate:
+              type: number
+        summary:
+          type: object
+          description: Thống kê tổng quan kết quả Backtest.
+          properties:
+            total_pnl:
+              type: number
+              description: "Tổng lợi nhuận / thua lỗ (USDT)."
+            total_pnl_percent:
+              type: number
+              description: "Phần trăm lợi nhuận so với vốn ban đầu."
+            win_rate:
+              type: number
+              description: "Tỷ lệ thắng (%)."
+            total_trades:
+              type: integer
+              description: Tổng số lệnh.
+            winning_trades:
+              type: integer
+              description: Số lệnh thắng.
+            losing_trades:
+              type: integer
+              description: Số lệnh thua.
+            max_drawdown:
+              type: number
+              description: "Mức sụt giảm tài khoản lớn nhất (USDT)."
+            max_drawdown_percent:
+              type: number
+              description: "Phần trăm sụt giảm lớn nhất."
+            profit_factor:
+              type: number
+              description: "Profit Factor (Tổng thắng / Tổng thua)."
+        equity_curve:
+          type: array
+          description: Dữ liệu biểu đồ tăng trưởng (Equity Chart).
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+              equity:
+                type: number
+                description: Số dư tài khoản tại thời điểm.
+        trades:
+          type: array
+          description: Danh sách lệnh đã giả lập khớp.
+          items:
+            $ref: "#/components/schemas/BacktestTrade"
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    BacktestTrade:
+      type: object
+      properties:
+        open_time:
+          type: string
+          format: date-time
+          description: Thời gian mở vị thế.
+        close_time:
+          type: string
+          format: date-time
+          description: Thời gian đóng vị thế.
+        side:
+          type: string
+          enum:
+            - Long
+            - Short
+        entry_price:
+          type: number
+          description: Giá vào lệnh.
+        exit_price:
+          type: number
+          description: Giá thoát lệnh.
+        quantity:
+          type: number
+          description: Khối lượng giao dịch.
+        fee:
+          type: number
+          description: Phí giao dịch.
+        pnl:
+          type: number
+          description: Lợi nhuận / thua lỗ của lệnh.
+
+    CreateBotRequest:
+      type: object
+      required:
+        - bot_name
+        - strategy_id
+        - symbol
+      properties:
+        bot_name:
+          type: string
+          description: Tên định danh cho Bot. Tối đa 100 ký tự.
+          maxLength: 100
+        strategy_id:
+          type: string
+          format: uuid
+          description: ID chiến lược dùng làm nền tảng logic cho Bot.
+        symbol:
+          type: string
+          description: "Cặp tiền mã hóa giao dịch (VD: BTCUSDT)."
+          example: "BTCUSDT"
+
+    BotCreated:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        bot_name:
+          type: string
+        strategy_id:
+          type: string
+          format: uuid
+        strategy_version:
+          type: integer
+          description: Phiên bản chiến lược tại thời điểm Snapshot.
+        symbol:
+          type: string
+        status:
+          type: string
+          enum:
+            - Running
+            - Stopped
+            - Error
+          example: "Running"
+        total_pnl:
+          type: number
+          example: 0
+        created_at:
+          type: string
+          format: date-time
+
+    BotSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        bot_name:
+          type: string
+        strategy_id:
+          type: string
+          format: uuid
+        strategy_name:
+          type: string
+        strategy_version:
+          type: integer
+        symbol:
+          type: string
+        status:
+          type: string
+          enum:
+            - Running
+            - Stopped
+            - Error
+        total_pnl:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BotDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        bot_name:
+          type: string
+        strategy_id:
+          type: string
+          format: uuid
+        strategy_name:
+          type: string
+        strategy_version:
+          type: integer
+        symbol:
+          type: string
+        status:
+          type: string
+          enum:
+            - Running
+            - Stopped
+            - Error
+        total_pnl:
+          type: number
+        position:
+          $ref: "#/components/schemas/BotPosition"
+        open_orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpenOrder"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BotPosition:
+      type: object
+      nullable: true
+      description: Vị thế hiện tại của Bot trên sàn. `null` nếu không có vị thế.
+      properties:
+        side:
+          type: string
+          enum:
+            - Long
+            - Short
+          description: Chiều vị thế.
+        entry_price:
+          type: number
+          description: Giá vào lệnh trung bình.
+        quantity:
+          type: number
+          description: Khối lượng vị thế.
+        leverage:
+          type: integer
+          description: Đòn bẩy (1x - 125x).
+        unrealized_pnl:
+          type: number
+          description: Lợi nhuận chưa chốt (Unrealized PnL).
+        margin_type:
+          type: string
+          enum:
+            - Isolated
+            - Cross
+          description: Kiểu ký quỹ.
+
+    OpenOrder:
+      type: object
+      properties:
+        order_id:
+          type: string
+          description: Mã lệnh trên sàn.
+        side:
+          type: string
+          enum:
+            - Buy
+            - Sell
+        type:
+          type: string
+          enum:
+            - Limit
+            - Market
+            - Stop
+        price:
+          type: number
+          description: Giá đặt lệnh.
+        quantity:
+          type: number
+          description: Khối lượng lệnh.
+        status:
+          type: string
+          description: Trạng thái lệnh chờ.
+          example: "Pending"
+
+    StopBotRequest:
+      type: object
+      properties:
+        close_position:
+          type: boolean
+          description: >-
+            `true`: Dừng Bot + đóng tất cả vị thế đang mở + hủy lệnh chờ trên sàn.
+            `false` (mặc định): Chỉ dừng Bot, giữ nguyên vị thế hiện tại.
+          default: false
+
+    BotStatusUpdate:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - Running
+            - Stopped
+            - Error
+        updated_at:
+          type: string
+          format: date-time
+
+    BotStopResult:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          example: "Stopped"
+        total_pnl:
+          type: number
+        updated_at:
+          type: string
+          format: date-time
+
+    BotLogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: ID log (BIGSERIAL).
+        action_decision:
+          type: string
+          nullable: true
+          description: "Quyết định hành động (VD: Đặt lệnh Long, Bỏ qua)."
+        unit_used:
+          type: integer
+          description: Số lượng Unit đã sử dụng trong phiên này.
+        message:
+          type: string
+          description: Thông báo chi tiết hoặc lỗi trong quá trình thực thi.
+        created_at:
+          type: string
+          format: date-time
+          description: Thời gian log được sinh ra.
+
+    TradeRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        bot_id:
+          type: string
+          format: uuid
+        bot_name:
+          type: string
+        symbol:
+          type: string
+        side:
+          type: string
+          enum:
+            - Long
+            - Short
+        quantity:
+          type: number
+          format: double
+          description: Khối lượng giao dịch.
+        fill_price:
+          type: number
+          format: double
+          description: Giá khớp lệnh thực tế.
+        fee:
+          type: number
+          format: double
+          description: Phí giao dịch.
+        realized_pnl:
+          type: number
+          format: double
+          description: Lợi nhuận / thua lỗ thực tế đã chốt.
+        status:
+          type: string
+          enum:
+            - Filled
+            - Canceled
+        executed_at:
+          type: string
+          format: date-time
+          description: Thời gian thực thi lệnh.
+
+    MarketSymbol:
+      type: object
+      properties:
+        symbol:
+          type: string
+          description: Cặp tiền mã hóa.
+          example: "BTCUSDT"
+        last_price:
+          type: number
+          format: double
+          description: Giá hiện tại.
+        price_change_percent:
+          type: number
+          format: double
+          description: Phần trăm thay đổi giá trong 24h.
+        volume_24h:
+          type: number
+          format: double
+          description: Khối lượng giao dịch 24h.
+
+    CandleData:
+      type: object
+      properties:
+        symbol:
+          type: string
+        timeframe:
+          type: string
+        candles:
+          type: array
+          items:
+            $ref: "#/components/schemas/Candle"
+        markers:
+          type: array
+          description: >-
+            Danh sách điểm khớp lệnh (Trade Markers) gắn lên biểu đồ,
+            của các Bot đang chạy trên cặp tiền này.
+          items:
+            $ref: "#/components/schemas/TradeMarker"
+
+    Candle:
+      type: object
+      properties:
+        open_time:
+          type: string
+          format: date-time
+          description: Thời gian bắt đầu mở nến.
+        open:
+          type: number
+          format: double
+          description: Giá mở cửa.
+        high:
+          type: number
+          format: double
+          description: Giá cao nhất.
+        low:
+          type: number
+          format: double
+          description: Giá thấp nhất.
+        close:
+          type: number
+          format: double
+          description: Giá đóng cửa.
+        volume:
+          type: number
+          format: double
+          description: Khối lượng giao dịch.
+        is_closed:
+          type: boolean
+          description: "Nến đã đóng hoàn toàn hay chưa. `false` = đang hình thành."
+
+    TradeMarker:
+      type: object
+      description: Điểm khớp lệnh được gắn lên biểu đồ (Timestamp + Price).
+      properties:
+        time:
+          type: string
+          format: date-time
+          description: Thời gian khớp lệnh.
+        price:
+          type: number
+          format: double
+          description: Mức giá khớp lệnh.
+        side:
+          type: string
+          enum:
+            - Long
+            - Short
+        bot_name:
+          type: string
+        bot_id:
+          type: string
+          format: uuid
