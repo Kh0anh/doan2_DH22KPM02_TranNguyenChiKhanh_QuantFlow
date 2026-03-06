@@ -42,9 +42,234 @@
 ## 🛠 Công nghệ sử dụng
 Hệ thống được phát triển dựa trên các công nghệ hiện đại nhằm đảm bảo tính ổn định và thời gian thực:
 
-* **Backend:** Golang (Gin Framework, Melody)
-* **Frontend:** Next.js (TypeScript, Tailwind CSS, Shadcn/UI)
-* **Công cụ cốt lõi:** Google Blockly
+* **Backend:** Golang 1.24 (GORM + pgx, gorilla/websocket)
+* **Frontend:** Next.js 16 (React 19, TypeScript, Tailwind CSS, shadcn/ui)
+* **Database:** PostgreSQL 16
+* **Reverse Proxy:** Nginx 1.26
+* **Containerization:** Docker & Docker Compose
+* **Block-based Editor:** Google Blockly
+
+---
+
+## 🐳 Cài đặt và Chạy Hệ thống (Docker)
+
+### Yêu cầu hệ thống (Prerequisites)
+
+Đảm bảo máy tính của bạn đã cài đặt các công cụ sau:
+
+| Công cụ | Phiên bản tối thiểu | Kiểm tra phiên bản |
+|---------|---------------------|-------------------|
+| **Docker Engine** | 24.0+ | `docker --version` |
+| **Docker Compose** | 2.20+ | `docker compose version` |
+| **Git** | 2.30+ | `git --version` |
+
+> **Chú ý:** Đối với Windows, khuyến nghị cài đặt **Docker Desktop**  
+> Đối với Linux, cài đặt Docker Engine + Docker Compose plugin
+
+### Bước 1: Clone Repository
+
+```bash
+git clone https://github.com/Kh0anh/doan2_DH22KPM02_TranNguyenChiKhanh_QuantFlow.git
+cd doan2_DH22KPM02_TranNguyenChiKhanh_QuantFlow
+```
+
+### Bước 2: Cấu hình Environment Variables
+
+```bash
+# Sao chép file template
+cp .env.example .env
+
+# Chỉnh sửa file .env với editor yêu thích
+nano .env   # hoặc: vi .env, code .env, notepad .env
+```
+
+**⚠️ QUAN TRỌNG:** Thay đổi các giá trị sau trong file `.env`:
+
+```env
+# Đổi mật khẩu database
+POSTGRES_PASSWORD=your_strong_password_here
+
+# Tạo JWT Secret (tối thiểu 32 ký tự)
+JWT_SECRET=$(openssl rand -base64 32)
+
+# Tạo AES Key (chính xác 32 bytes)
+AES_KEY=$(openssl rand -hex 32)
+```
+
+### Bước 3: Tạo SSL Certificate (Development)
+
+```bash
+# Cấp quyền thực thi cho script
+chmod +x scripts/generate-ssl.sh
+
+# Chạy script tạo self-signed certificate
+./scripts/generate-ssl.sh
+```
+
+> **Lưu ý:** Chỉ cần làm một lần. Certificate có hiệu lực 365 ngày.  
+> Production: Sử dụng Let's Encrypt certificate thay vì self-signed.
+
+### Bước 4: Khởi động Stack
+
+#### Development Mode (với hot reload)
+
+```bash
+# Khởi động tất cả services
+docker compose up
+
+# Hoặc chạy ngầm (detached mode)
+docker compose up -d
+
+# Xem logs
+docker compose logs -f
+
+# Xem logs của service cụ thể
+docker compose logs -f backend
+docker compose logs -f frontend
+```
+
+#### Production Mode
+
+```bash
+# Build và chạy production stack
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+
+# Kiểm tra trạng thái
+docker compose ps
+```
+
+### Bước 5: Truy cập Hệ thống
+
+Sau khi khởi động thành công, truy cập các endpoint sau:
+
+| Service | URL | Mô tả |
+|---------|-----|-------|
+| **Frontend** | http://localhost | Giao diện người dùng |
+| **Backend API** | http://localhost/api/v1 | RESTful API |
+| **WebSocket** | ws://localhost/ws | Real-time connection |
+| **PostgreSQL** | localhost:5432 | Database (chỉ development) |
+
+**Thông tin đăng nhập mặc định:**
+- Username: `admin`
+- Password: `Admin@2026`
+
+> **⚠️ BẢO MẬT:** Đổi mật khẩu ngay sau lần đăng nhập đầu tiên!
+
+### Các lệnh Docker Compose hữu ích
+
+```bash
+# Dừng tất cả services (giữ nguyên data)
+docker compose stop
+
+# Khởi động lại services đã dừng
+docker compose start
+
+# Dừng và xóa containers (giữ nguyên volumes)
+docker compose down
+
+# Dừng và xóa containers + volumes (XÓA TOÀN BỘ DỮ LIỆU!)
+docker compose down -v
+
+# Xem trạng thái services
+docker compose ps
+
+# Rebuild images (sau khi sửa code)
+docker compose up --build
+
+# Chạy lệnh trong container đang chạy
+docker compose exec backend sh
+docker compose exec postgres psql -U quantflow_user -d quantflow_db
+
+# Xem resource usage
+docker stats
+```
+
+### Troubleshooting (Xử lý lỗi thường gặp)
+
+#### 1. Port already in use (Cổng đã bị chiếm)
+
+```bash
+# Kiểm tra port nào đang sử dụng
+# Windows
+netstat -ano | findstr :80
+netstat -ano | findstr :5432
+
+# Linux/Mac
+lsof -i :80
+lsof -i :5432
+
+# Giải pháp: Thay đổi port trong docker-compose.yml
+# Hoặc dừng service đang chiếm port
+```
+
+#### 2. Backend không kết nối được Database
+
+```bash
+# Kiểm tra PostgreSQL đã ready chưa
+docker compose logs postgres
+
+# Khởi động lại backend sau khi postgres ready
+docker compose restart backend
+```
+
+#### 3. Permission denied khi mount volumes (Linux)
+
+```bash
+# Thêm user ID vào docker-compose.yml
+user: "${UID}:${GID}"
+
+# Hoặc chạy với sudo (không khuyến nghị)
+sudo docker compose up
+```
+
+#### 4. Frontend không load được (404 Not Found)
+
+```bash
+# Clear Next.js cache và rebuild
+docker compose exec frontend rm -rf .next
+docker compose restart frontend
+```
+
+#### 5. SSL Certificate error
+
+```bash
+# Tạo lại certificate
+rm -rf nginx/ssl/*
+./scripts/generate-ssl.sh
+docker compose restart nginx
+```
+
+### Database Management
+
+#### Backup Database
+
+```bash
+# Tạo backup file
+docker compose exec postgres pg_dump -U quantflow_user quantflow_db > backup.sql
+
+# Hoặc với format custom (nén)
+docker compose exec postgres pg_dump -U quantflow_user -Fc quantflow_db > backup.dump
+```
+
+#### Restore Database
+
+```bash
+# Restore từ SQL file
+docker compose exec -T postgres psql -U quantflow_user quantflow_db < backup.sql
+
+# Restore từ custom format
+docker compose exec postgres pg_restore -U quantflow_user -d quantflow_db backup.dump
+```
+
+#### Kết nối trực tiếp database bằng client (DBeaver, pgAdmin)
+
+```
+Host: localhost
+Port: 5432
+Database: quantflow_db
+Username: quantflow_user
+Password: <giá trị trong .env>
+```
 
 ---
 *Copyright © 2026 Khanh. Licensed under the GNU GPL v3.*

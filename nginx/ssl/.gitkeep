@@ -1,0 +1,3 @@
+# Placeholder for SSL certificates
+# Self-signed certificates for development will be placed here
+# Production: Use Let's Encrypt certificates

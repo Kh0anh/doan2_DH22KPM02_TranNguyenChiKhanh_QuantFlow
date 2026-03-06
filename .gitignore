@@ -33,3 +33,40 @@ backend/go.work
 
 # -- Exmpale -- 
 docs/example/
+
+# ============================================================
+# Docker & Infrastructure (Added: March 7, 2026 - Task 1.1.1)
+# ============================================================
+
+# Docker Compose override files (keep only base configs in Git)
+docker-compose.override.yml
+
+# SSL Certificates (use Let's Encrypt or generate locally)
+nginx/ssl/*.pem
+nginx/ssl/*.key
+nginx/ssl/*.crt
+nginx/ssl/*.csr
+
+# Docker volumes data (managed by Docker)
+volumes/
+pgdata/
+postgres-data/
+
+# Logs
+*.log
+logs/
+nginx/logs/
+backend/logs/
+
+# Backup files
+backups/
+*.sql.gz
+*.dump
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+*~

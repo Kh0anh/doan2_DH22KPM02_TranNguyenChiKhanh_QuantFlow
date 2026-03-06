@@ -1,0 +1,23 @@
+# Backend Dockerfile build exclusions
+*.md
+.git
+.gitignore
+.vscode
+.idea
+docs/
+scripts/
+frontend/
+nginx/
+
+# Go specific
+*.test
+*.out
+coverage.txt
+vendor/
+
+# Development files
+.env
+.env.local
+.env.*.local
+tmp/
+*.log
