@@ -1,0 +1,376 @@
+# QuantFlow — Coding Standards & Conventions
+
+> **Project:** QuantFlow — Low-code Crypto Trading Platform (Binance Futures CEX)
+> **Tech Stack:** Go 1.24 (Clean Architecture) · Next.js 16 / React 19 / TypeScript · PostgreSQL 16 · Docker Compose · Nginx
+> **Version:** 1.0
+
+---
+
+## Table of Contents
+
+1. [General Principles](#1-general-principles)
+2. [Backend Naming Conventions (Go)](#2-backend-naming-conventions-go)
+3. [Frontend Naming Conventions (TypeScript / React)](#3-frontend-naming-conventions-typescript--react)
+4. [Database Naming Conventions (PostgreSQL)](#4-database-naming-conventions-postgresql)
+5. [API & WebSocket Naming Conventions](#5-api--websocket-naming-conventions)
+6. [Financial Domain Naming Rules](#6-financial-domain-naming-rules)
+7. [Commenting Rules](#7-commenting-rules)
+8. [File & Directory Naming](#8-file--directory-naming)
+
+---
+
+## 1. General Principles
+
+- **Language:** ALL code, comments, commit messages, variable names, and documentation within the codebase MUST be written in **English**. No exceptions.
+- **Clarity over brevity:** Names must be self-documenting. A longer descriptive name is always preferred over a short ambiguous abbreviation.
+- **Domain-driven vocabulary:** Use terminology from the crypto trading domain consistently. Never invent synonyms. Use the canonical terms: `strategy`, `bot_instance`, `backtest`, `candle`, `session`, `lifecycle_variable`, `unit_cost`, `pnl`, `equity`, `fill_price`, `realized_pnl`, `unrealized_pnl`, `drawdown`, `symbol`, `timeframe`, `leverage`, `margin`.
+- **No magic values:** Every status string, threshold, or business constant must be defined as a typed constant or enum — never hardcoded inline. Examples: bot statuses (`Running`, `Stopped`, `Error`), strategy statuses (`Draft`, `Valid`, `Archived`), trade sides (`Long`, `Short`).
+
+---
+
+## 2. Backend Naming Conventions (Go)
+
+### 2.1 Packages
+
+| Element | Convention | Example |
+|:--------|:-----------|:--------|
+| Package name | `lowercase`, single word, no underscores | `handler`, `logic`, `repository`, `domain`, `engine` |
+| Internal packages | Under `internal/` — unexportable by design | `internal/logic`, `internal/handler` |
+| Shared utilities | Under `pkg/` — importable by external consumers | `pkg/crypto`, `pkg/response` |
+
+### 2.2 Types & Structs
+
+| Element | Convention | Example |
+|:--------|:-----------|:--------|
+| Exported struct | `PascalCase`, noun, singular | `BotInstance`, `TradeHistory`, `StrategyVersion` |
+| Unexported struct | `camelCase` | `candleBuffer`, `sessionContext` |
+| Interface | `PascalCase`, behavior-descriptive; single-method interfaces use `-er` suffix | `StrategyRepository`, `OrderExecutor`, `TokenRefresher` |
+| Interface file | Collected in `interfaces.go` within the `repository` package | — |
+
+### 2.3 Functions & Methods
+
+| Element | Convention | Example |
+|:--------|:-----------|:--------|
+| Exported function | `PascalCase`, verb-first | `CreateBotInstance()`, `CalculateRSI()`, `EncryptSecretKey()` |
+| Unexported function | `camelCase`, verb-first | `validateOrderParams()`, `buildCandleQuery()` |
+| Constructor | `New` + type name | `NewBotManager()`, `NewBacktestSimulator()` |
+| Handler method | HTTP verb context implied; name describes the action | `Login()`, `ListStrategies()`, `StopBot()` |
+| Logic layer method | Business-action oriented | `ExecuteBacktest()`, `StartBotInstance()`, `SyncMarketData()` |
+| Repository method | CRUD-verb + entity | `CreateUser()`, `FindBotByID()`, `UpdateTotalPnL()`, `DeleteStrategy()` |
+
+### 2.4 Variables & Constants
+
+| Element | Convention | Example |
+|:--------|:-----------|:--------|
+| Exported constant | `PascalCase` | `MaxLoginAttempts`, `LockoutDurationMinutes`, `DefaultUnitCostLimit` |
+| Unexported constant | `camelCase` | `defaultPageSize`, `heartbeatInterval` |
+| Local variable | `camelCase`, short but descriptive | `botID`, `fillPrice`, `totalPnL` |
+| Loop variable | Single letter only for trivial loops | `i`, `j`, `k` |
+| Error variable | Always `err`; wrap with `fmt.Errorf("context: %w", err)` | — |
+| Context | Always `ctx` as first parameter | `func (s *BotLogic) Start(ctx context.Context, ...)` |
+
+### 2.5 Goroutine & Channel Naming
+
+| Element | Convention | Example |
+|:--------|:-----------|:--------|
+| Channel variable | Suffix `Ch` or describe the payload | `candleCh`, `orderResultCh`, `stopSignal` |
+| Goroutine launcher | Prefix `go` in the wrapping function name, or describe the worker | `runBotWorker()`, `listenKlineStream()` |
+
+---
+
+## 3. Frontend Naming Conventions (TypeScript / React)
+
+### 3.1 Files & Directories
+
+| Element | Convention | Example |
+|:--------|:-----------|:--------|
+| React component file | `kebab-case.tsx` | `candle-chart.tsx`, `bot-tab.tsx`, `blockly-workspace.tsx` |
+| Utility / lib file | `kebab-case.ts` | `auth.ts`, `utils.ts` |
+| Type definition file | `kebab-case.ts` under `types/` | `index.ts`, `trading.ts` |
+| Directory | `kebab-case` | `components/trading/`, `components/editor/` |
+| Next.js route group | Parenthesized `kebab-case` | `(dashboard)/`, `login/` |
+
+### 3.2 Components
+
+| Element | Convention | Example |
+|:--------|:-----------|:--------|
+| Component name | `PascalCase`, noun-descriptive | `CandleChart`, `MarketWatch`, `BacktestTab`, `SettingsDialog` |
+| Component props type | Component name + `Props` | `CandleChartProps`, `BotTabProps` |
+| Custom hook | `use` prefix + `camelCase` | `useWebSocket`, `useMarketTicker`, `useBotLogs` |
+| Context | `PascalCase` + `Context` / `Provider` | `AuthContext`, `AuthProvider` |
+
+### 3.3 Variables & Functions
+
+| Element | Convention | Example |
+|:--------|:-----------|:--------|
+| Local variable | `camelCase` | `botInstance`, `currentSymbol`, `equityCurve` |
+| Boolean variable | `is` / `has` / `should` prefix | `isLoading`, `hasOpenPosition`, `shouldReconnect` |
+| Constant (module-level) | `UPPER_SNAKE_CASE` | `MAX_RECONNECT_DELAY_MS`, `WS_HEARTBEAT_INTERVAL` |
+| Event handler | `handle` + event noun | `handleLogin`, `handleStartBot`, `handleSymbolChange` |
+| Callback prop | `on` + event noun | `onLogin`, `onBotStarted`, `onSymbolChange` |
+| Fetcher / API call | `fetch` / `create` / `update` / `delete` + entity | `fetchStrategies()`, `createBotInstance()`, `deleteApiKey()` |
+
+### 3.4 TypeScript Types & Interfaces
+
+| Element | Convention | Example |
+|:--------|:-----------|:--------|
+| Interface / Type | `PascalCase`, no `I` prefix | `BotInstance`, `TradeRecord`, `CandleData` |
+| Enum | `PascalCase` name, `PascalCase` members | `BotStatus.Running`, `OrderSide.Long` |
+| Generic type param | Single uppercase letter or short descriptor | `T`, `TData`, `TResponse` |
+| Union type for statuses | String literal union | `type BotStatus = "Running" \| "Stopped" \| "Error"` |
+
+---
+
+## 4. Database Naming Conventions (PostgreSQL)
+
+### 4.1 Tables & Columns
+
+| Element | Convention | Example |
+|:--------|:-----------|:--------|
+| Table name | `snake_case`, plural | `bot_instances`, `strategy_versions`, `candles_data` |
+| Column name | `snake_case` | `user_id`, `fill_price`, `secret_key_encrypted` |
+| Primary key | Always `id` | `id UUID DEFAULT gen_random_uuid()` |
+| Foreign key column | Referenced table (singular) + `_id` | `user_id`, `bot_id`, `strategy_version_id` |
+| Timestamp columns | `created_at`, `updated_at`, `executed_at` — always `TIMESTAMPTZ` | — |
+| Boolean column | `is_` prefix | `is_closed` |
+| Status column | Named `status`, type `VARCHAR(20)`, with a documented set of allowed values | `status VARCHAR(20) NOT NULL DEFAULT 'Draft'` |
+
+### 4.2 Constraints & Indexes
+
+| Element | Convention | Example |
+|:--------|:-----------|:--------|
+| Primary key | Implicit via `PRIMARY KEY` | — |
+| Foreign key constraint | `fk_<parent>_<child>` | `fk_user_api`, `fk_bot_trade` |
+| Unique constraint | `uk_<descriptive>` | `uk_strategy_version`, `uk_symbol_interval_opentime` |
+| Index | `idx_<table>_<columns>` | `idx_candles_symbol_interval_time`, `idx_bot_status` |
+
+---
+
+## 5. API & WebSocket Naming Conventions
+
+### 5.1 REST API
+
+| Element | Convention | Example |
+|:--------|:-----------|:--------|
+| Base path | `/api/v1/` | — |
+| Resource path | `kebab-case`, plural nouns | `/strategies`, `/api-keys`, `/bot-instances` |
+| Action sub-path | Verb for non-CRUD actions | `/auth/login`, `/auth/logout`, `/auth/refresh` |
+| Query params | `snake_case` | `?bot_id=...&page_size=20` |
+| JSON request body | `snake_case` keys | `{ "api_key": "...", "secret_key": "..." }` |
+| JSON response body | `snake_case` keys | `{ "total_pnl": 0.5, "created_at": "..." }` |
+| Error response code | `UPPER_SNAKE_CASE` | `INVALID_CREDENTIALS`, `ACCOUNT_LOCKED`, `UNIT_COST_EXCEEDED` |
+
+### 5.2 WebSocket
+
+| Element | Convention | Example |
+|:--------|:-----------|:--------|
+| Channel name | `snake_case` | `market_ticker`, `bot_logs`, `position_update` |
+| Event name | `snake_case` | `subscribed`, `unsubscribed`, `ping`, `pong` |
+| Action field | `snake_case` verb | `subscribe`, `unsubscribe` |
+| Param keys | `snake_case` | `{ "symbol": "BTCUSDT", "bot_id": "..." }` |
+
+---
+
+## 6. Financial Domain Naming Rules
+
+This section defines **mandatory** naming patterns for variables, struct fields, and database columns that represent financial or trading-specific data. These rules prevent ambiguity in a domain where a misnamed variable can cause real monetary loss.
+
+### 6.1 Monetary Amounts — Mandatory Suffixes
+
+Every variable or field representing a monetary value MUST include one of the following suffixes to clarify its meaning:
+
+| Suffix | Meaning | Example (Go) | Example (TS) | Example (DB) |
+|:-------|:--------|:-------------|:-------------|:-------------|
+| `_price` / `Price` | A per-unit price point | `FillPrice`, `EntryPrice` | `fillPrice`, `entryPrice` | `fill_price`, `entry_price` |
+| `_amount` / `Amount` | A total monetary value (price × quantity) | `OrderAmount`, `NotionalAmount` | `orderAmount` | `order_amount` |
+| `_fee` / `Fee` | A transaction cost | `TradingFee`, `CommissionFee` | `tradingFee` | `fee` |
+| `_pnl` / `PnL` | Profit and Loss | `TotalPnL`, `RealizedPnL`, `UnrealizedPnL` | `totalPnl`, `realizedPnl` | `total_pnl`, `realized_pnl` |
+| `_balance` / `Balance` | Account balance | `AvailableBalance`, `WalletBalance` | `availableBalance` | `available_balance` |
+| `_quantity` / `Quantity` | A tradeable size / volume | `OrderQuantity`, `FillQuantity` | `orderQuantity` | `quantity` |
+| `_rate` / `Rate` | A percentage or ratio | `WinRate`, `FeeRate` | `winRate`, `feeRate` | `win_rate`, `fee_rate` |
+| `_capital` / `Capital` | Seed or initial funding | `InitialCapital` | `initialCapital` | `initial_capital` |
+| `_volume` / `Volume` | Trading volume over a period | `Volume` | `volume` | `volume` |
+
+### 6.2 Price Components (OHLCV Candles)
+
+Candle price fields MUST follow this exact pattern — no abbreviations, no alternative names:
+
+| Canonical Name (DB) | Go Struct Field | TypeScript Field |
+|:--------------------|:----------------|:-----------------|
+| `open_price` | `OpenPrice` | `openPrice` |
+| `high_price` | `HighPrice` | `highPrice` |
+| `low_price` | `LowPrice` | `lowPrice` |
+| `close_price` | `ClosePrice` | `closePrice` |
+| `volume` | `Volume` | `volume` |
+| `open_time` | `OpenTime` | `openTime` |
+| `is_closed` | `IsClosed` | `isClosed` |
+
+### 6.3 Order & Position Fields
+
+| Concept | Go | TypeScript | DB |
+|:--------|:---|:-----------|:---|
+| Trade direction | `Side` (`Long` / `Short`) | `side` | `side` |
+| Order type | `OrderType` (`Market` / `Limit`) | `orderType` | `order_type` |
+| Leverage multiplier | `Leverage` | `leverage` | `leverage` |
+| Margin mode | `MarginType` (`Isolated` / `Cross`) | `marginType` | `margin_type` |
+| Trading pair | `Symbol` | `symbol` | `symbol` |
+| Timeframe interval | `Timeframe` / `Interval` | `timeframe` / `interval` | `interval` |
+| Execution timestamp | `ExecutedAt` | `executedAt` | `executed_at` |
+
+### 6.4 Status Enumerations
+
+All status fields MUST be typed constants or string literal unions, never raw strings inline:
+
+| Domain Entity | Allowed Values | Go Definition | TS Definition |
+|:--------------|:---------------|:--------------|:--------------|
+| Strategy | `Draft`, `Valid`, `Archived` | `const StrategyStatusDraft = "Draft"` | `type StrategyStatus = "Draft" \| "Valid" \| "Archived"` |
+| Strategy Version | `Draft`, `Valid` | `const VersionStatusDraft = "Draft"` | `type VersionStatus = "Draft" \| "Valid"` |
+| Bot Instance | `Running`, `Stopped`, `Error` | `const BotStatusRunning = "Running"` | `type BotStatus = "Running" \| "Stopped" \| "Error"` |
+| API Key | `Active`, `Revoked` | `const ApiKeyStatusActive = "Active"` | `type ApiKeyStatus = "Active" \| "Revoked"` |
+| Trade | `Filled`, `Canceled` | `const TradeStatusFilled = "Filled"` | `type TradeStatus = "Filled" \| "Canceled"` |
+
+### 6.5 Precision Rule
+
+All monetary and quantity fields interacting with exchange data MUST use:
+- **Go:** `decimal.Decimal` (from `shopspring/decimal`) or `math/big` for intermediate calculations. Never use `float64` for financial arithmetic.
+- **TypeScript:** `string` for values received from the API. Convert to `number` only for display. Never perform financial arithmetic in the frontend.
+- **PostgreSQL:** `DECIMAL(18,8)` — no exceptions for any price, quantity, fee, or PnL column.
+
+---
+
+## 7. Commenting Rules
+
+### 7.1 Language
+
+**ALL comments MUST be written in English.** This applies to:
+- GoDoc comments
+- JSDoc / TSDoc comments
+- Inline comments
+- TODO / FIXME annotations
+- SQL comments in migration files
+- Commit messages
+
+### 7.2 The "Why, Not What" Principle
+
+Comments MUST explain **business intent and domain reasoning** — not restate what the code syntax already shows.
+
+**BAD — Describing syntax (the "What"):**
+```go
+// Loop through candles
+for _, candle := range candles {
+```
+
+```go
+// Set status to Running
+bot.Status = BotStatusRunning
+```
+
+**GOOD — Explaining business logic (the "Why"):**
+```go
+// Simulate On-Candle-Close events sequentially to replay historical market
+// conditions. Each closed candle triggers one strategy session execution,
+// matching the live trading behavior defined in FR-RUN-02.
+for _, candle := range candles {
+```
+
+```go
+// Mark bot as Running before subscribing to the Binance kline WebSocket.
+// The status must be persisted first so that if the server crashes and restarts,
+// the auto-recovery process (NFR-REL-01) can detect and re-launch this bot.
+bot.Status = BotStatusRunning
+```
+
+### 7.3 GoDoc Comments (Backend)
+
+| Scope | Rule | Example |
+|:------|:-----|:--------|
+| Exported type | REQUIRED. First line: `<TypeName> + short description`. Mention the business entity it models. | `// BotInstance represents a running or stopped trading bot bound to a specific strategy version and symbol.` |
+| Exported function / method | REQUIRED. First line: `<FuncName> + what it does`. Include business constraints if non-obvious. | `// ExecuteBacktest runs a sequential on-candle-close simulation against historical data. It enforces the unit cost limit per session (FR-RUN-07).` |
+| Unexported function | OPTIONAL. Add only when the logic is non-trivial or encodes a domain rule. | `// matchOrder simulates order fills using the candle's high/low range. Market orders fill at open price; limit orders fill only if high/low crosses the limit price (FR-RUN-02).` |
+| Package | REQUIRED in `doc.go` or the primary file. One-liner describing the package's role in Clean Architecture. | `// Package logic implements the business rules layer. It orchestrates domain entities, repositories, and engine calls.` |
+| Struct fields | Add inline comment ONLY for fields with non-obvious business meaning. | `TotalPnL decimal.Decimal // Cumulative realized profit/loss across all closed trades by this bot` |
+
+### 7.4 JSDoc / TSDoc Comments (Frontend)
+
+| Scope | Rule | Example |
+|:------|:-----|:--------|
+| Component | REQUIRED for complex components (>50 lines). Describe its role in the UI and which SRS feature it serves. | `/** CandleChart renders a TradingView Lightweight chart with trade markers. Serves FR-MONITOR-02. */` |
+| Custom hook | REQUIRED. Describe what data it manages and the WebSocket channel it subscribes to (if any). | `/** useMarketTicker subscribes to the market_ticker WebSocket channel and returns live ticker + OHLCV data for the given symbol. */` |
+| Type / Interface | REQUIRED for domain types. Describe the business entity. | `/** Represents a single completed trade record used for reconciliation (FR-MONITOR-04). */` |
+| Utility function | OPTIONAL. Add only when the function encodes a non-obvious business rule. | — |
+| Props interface | OPTIONAL. Add only when a prop's purpose is ambiguous. | — |
+
+### 7.5 Inline Comments
+
+| Rule | Detail |
+|:-----|:-------|
+| When to use | ONLY when the code implements a non-obvious business rule, a security constraint, a performance optimization, or a workaround. |
+| When NOT to use | Never comment obvious code. Never comment getters, setters, simple assignments, or standard CRUD. |
+| Reference SRS / FR codes | When a block of code directly implements a specific requirement, reference its code: `// FR-RUN-07: Enforce unit cost limit per session`. |
+| Security-sensitive code | ALWAYS comment why a security measure exists. | `// AES-256-GCM decryption is performed in-memory only. The plaintext secret key must never be logged or persisted (NFR-SEC-01).` |
+| Workarounds | ALWAYS mark with `// WORKAROUND:` and explain the root cause. | `// WORKAROUND: Binance returns fee as string; parse to Decimal to avoid float drift.` |
+
+### 7.6 TODO / FIXME Annotations
+
+| Tag | Usage | Format |
+|:----|:------|:-------|
+| `TODO` | Planned improvement or missing feature | `// TODO(username): Implement Exponential Backoff for WS reconnect (NFR-REL-02)` |
+| `FIXME` | Known bug or incorrect behavior | `// FIXME(username): Race condition when two sessions write to the same lifecycle variable` |
+| `HACK` | Temporary solution that needs proper fix | `// HACK: Hardcoded 1000 unit limit — should be configurable per bot (FR-RUN-07)` |
+
+### 7.7 SQL & Migration Comments
+
+- Every `CREATE TABLE` statement MUST have a header comment explaining the table's business purpose.
+- Every non-trivial index MUST have a comment explaining the query pattern it optimizes.
+- Use `--` for SQL comments, and write the comment on the line above the statement.
+
+```sql
+-- Stores OHLCV candle data synced from Binance for backtesting and chart rendering.
+-- Supports multi-timeframe via the (symbol, interval) composite key.
+CREATE TABLE candles_data ( ... );
+
+-- Optimizes descending time-range queries for backtest simulation (NFR-PERF-02: <10s for 35K candles).
+CREATE INDEX idx_candles_symbol_interval_time ON candles_data (symbol, interval, open_time DESC);
+```
+
+---
+
+## 8. File & Directory Naming
+
+### 8.1 Backend (Go)
+
+| Element | Convention | Example |
+|:--------|:-----------|:--------|
+| Go source file | `snake_case.go` | `auth_handler.go`, `bot_logic.go`, `candle_repo.go` |
+| Test file | `snake_case_test.go` | `auth_logic_test.go`, `order_matcher_test.go` |
+| Domain entity file | Singular entity name | `user.go`, `bot_instance.go`, `strategy_version.go` |
+| Package directory | Single `lowercase` word | `handler/`, `logic/`, `repository/`, `domain/` |
+| Engine sub-package | Descriptive lowercase | `engine/blockly/`, `engine/backtest/`, `engine/bot/` |
+
+### 8.2 Frontend (TypeScript / Next.js)
+
+| Element | Convention | Example |
+|:--------|:-----------|:--------|
+| Component file | `kebab-case.tsx` | `candle-chart.tsx`, `settings-dialog.tsx` |
+| Utility file | `kebab-case.ts` | `utils.ts`, `auth.ts` |
+| Route directory | `kebab-case` or Next.js group `(group-name)` | `(dashboard)/`, `editor/`, `trading/` |
+| Layout file | `layout.tsx` (Next.js convention) | — |
+| Page file | `page.tsx` (Next.js convention) | — |
+| Type file | `kebab-case.ts` under `types/` | `types/index.ts` |
+
+---
+
+## Summary Checklist
+
+Before submitting any code, verify:
+
+- [ ] All names follow the casing convention for their layer (Go/TS/SQL).
+- [ ] All financial variables use the mandatory suffix (`_price`, `_amount`, `_pnl`, `_fee`, `_quantity`, `_rate`, `_balance`, `_capital`, `_volume`).
+- [ ] All status values are defined as typed constants — no raw strings.
+- [ ] All comments are in English.
+- [ ] No comment restates what the code syntax already shows — every comment explains "why".
+- [ ] Exported Go types and functions have GoDoc comments.
+- [ ] Complex React components and custom hooks have JSDoc comments.
+- [ ] Security-sensitive code blocks have explicit comments referencing the NFR code.
+- [ ] `DECIMAL(18,8)` is used for all financial columns — no `FLOAT` or `DOUBLE`.
+- [ ] `float64` is never used for financial arithmetic in Go — use `decimal.Decimal` or `math/big`.
