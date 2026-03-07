@@ -70,3 +70,6 @@ temp/
 *.swp
 *.swo
 *~
+
+# Docs resources
+docs/resources/
