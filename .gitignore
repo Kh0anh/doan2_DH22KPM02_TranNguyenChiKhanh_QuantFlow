@@ -31,8 +31,8 @@ backend/*.dylib
 backend/vendor/
 backend/go.work
 
-# -- Exmpale -- 
-docs/example/
+# -- Resources -- 
+docs/resources/
 
 # ============================================================
 # Docker & Infrastructure (Added: March 7, 2026 - Task 1.1.1)
