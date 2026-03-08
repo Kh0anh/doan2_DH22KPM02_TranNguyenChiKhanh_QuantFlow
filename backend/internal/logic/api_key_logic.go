@@ -27,6 +27,11 @@ var (
 	// user's API key are still in Running status. HTTP handler maps this to
 	// 409 ACTIVE_BOTS_EXIST (api.yaml §DELETE /exchange/api-keys, WBS 2.2.3).
 	ErrActiveBotsExist = errors.New("active bots are using this api key")
+
+	// ErrAPIKeyNotConfigured is returned when the user has no api_key record in
+	// the database yet. Callers map this to a user-facing error (e.g. 400) or
+	// use it as a bot-start guard (WBS 2.2.4, 2.7.1).
+	ErrAPIKeyNotConfigured = errors.New("no exchange api key configured for this user")
 )
 
 // SaveApiKeyInput is the internal DTO passed from ApiKeyHandler to ApiKeyLogic.
@@ -175,4 +180,33 @@ func (l *ApiKeyLogic) DeleteApiKey(ctx context.Context, userID string) error {
 		return fmt.Errorf("api_key_logic: DeleteApiKey: %w", err)
 	}
 	return nil
+}
+
+// BuildProxy constructs a BinanceProxy for the given user by loading their
+// encrypted API key from the database and decrypting it in-memory
+// (WBS 2.2.4, SRS FR-CORE-01 — Secure API Proxy pattern).
+//
+// The proxy is the sole gateway through which Bot and Blockly engine code
+// communicates with Binance. The Secret Key is decrypted per-call, passed to
+// NewBinanceProxy (where it is immediately zeroed), and never assigned to any
+// persistent variable or written to logs (SRS NFR-SEC-01, FR-CORE-01).
+//
+// Return patterns:
+//   - (*exchange.BinanceProxy, nil)  — success; caller owns the proxy lifetime.
+//   - (nil, ErrAPIKeyNotConfigured)  — user has not saved API keys yet.
+//   - (nil, other)                   — DB read or AES-256-GCM decryption error.
+func (l *ApiKeyLogic) BuildProxy(ctx context.Context, userID string) (*exchange.BinanceProxy, error) {
+	record, err := l.repo.FindByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("api_key_logic: BuildProxy: %w", err)
+	}
+	if record == nil {
+		return nil, ErrAPIKeyNotConfigured
+	}
+
+	proxy, err := exchange.NewBinanceProxy(record.ApiKey, record.SecretKeyEncrypted, l.aesKey)
+	if err != nil {
+		return nil, fmt.Errorf("api_key_logic: BuildProxy: %w", err)
+	}
+	return proxy, nil
 }
