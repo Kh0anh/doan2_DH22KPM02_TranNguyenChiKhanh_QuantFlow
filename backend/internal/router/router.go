@@ -44,14 +44,15 @@ func Setup(db *gorm.DB, cfg *config.Config) http.Handler {
 		r.Get("/health", healthHandler)
 
 		// Auth routes — public endpoints (no JWT middleware required here).
-		// WBS 2.1.1: POST /auth/login  (implemented)
-		// WBS 2.1.2: POST /auth/logout (implemented)
-		// WBS 2.1.3: GET  /auth/me     (implemented)
-		// WBS 2.1.4: POST /auth/refresh (TODO)
+		// WBS 2.1.1: POST /auth/login   (implemented)
+		// WBS 2.1.2: POST /auth/logout  (implemented)
+		// WBS 2.1.3: GET  /auth/me      (implemented)
+		// WBS 2.1.4: POST /auth/refresh (implemented)
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/login", authHandler.Login)
-			r.Post("/logout", authHandler.Logout) // WBS 2.1.2
-			r.Get("/me", authHandler.Me)          // WBS 2.1.3
+			r.Post("/logout", authHandler.Logout)   // WBS 2.1.2
+			r.Get("/me", authHandler.Me)            // WBS 2.1.3
+			r.Post("/refresh", authHandler.Refresh) // WBS 2.1.4
 		})
 
 		// TODO(dev): Mount account handler — PUT /account/profile (WBS 2.1.6)
