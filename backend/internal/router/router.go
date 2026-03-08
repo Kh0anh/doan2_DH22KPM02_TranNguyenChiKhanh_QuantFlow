@@ -38,6 +38,9 @@ func Setup(db *gorm.DB, cfg *config.Config) http.Handler {
 	bruteForce := logic.NewBruteForceStore()
 	authLogic := logic.NewAuthLogic(userRepo, bruteForce)
 	authHandler := handler.NewAuthHandler(authLogic, cfg)
+	// WBS 2.1.6: account profile management
+	accountLogic := logic.NewAccountLogic(userRepo)
+	accountHandler := handler.NewAccountHandler(accountLogic, cfg)
 
 	r.Route("/api/v1", func(r chi.Router) {
 
@@ -66,6 +69,7 @@ func Setup(db *gorm.DB, cfg *config.Config) http.Handler {
 
 			// TODO(dev): Mount account handler — PUT /account/profile (WBS 2.1.6)
 			r.Route("/account", func(r chi.Router) {
+				r.Put("/profile", accountHandler.UpdateProfile)
 			})
 
 			// TODO(dev): Mount exchange API-key handlers — POST/GET/DELETE /exchange/api-keys (WBS 2.2.1-2.2.3)
