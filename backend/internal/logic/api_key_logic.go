@@ -112,3 +112,25 @@ func (l *ApiKeyLogic) SaveApiKey(ctx context.Context, userID string, input SaveA
 	}
 	return record, nil
 }
+
+// GetApiKey retrieves the current API key configuration for the given user and
+// returns its public-safe representation (WBS 2.2.2).
+//
+// The SecretKeyEncrypted field is NEVER accessed or returned — only the masked
+// ApiKey and status are surfaced via domain.ApiKeyInfo (NFR-SEC-01).
+//
+// Return patterns:
+//   - (*ApiKeyInfo, nil) — configured; caller renders 200 with data payload.
+//   - (nil, nil)         — not yet configured; caller renders 200 with data:null.
+//   - (nil, err)         — unexpected DB error → HTTP 500.
+func (l *ApiKeyLogic) GetApiKey(ctx context.Context, userID string) (*domain.ApiKeyInfo, error) {
+	record, err := l.repo.FindByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("api_key_logic: GetApiKey: %w", err)
+	}
+	if record == nil {
+		return nil, nil
+	}
+	info := record.ToInfo()
+	return &info, nil
+}

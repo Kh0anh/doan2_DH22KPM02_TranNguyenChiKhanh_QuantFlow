@@ -95,3 +95,35 @@ func (h *ApiKeyHandler) Save(w http.ResponseWriter, r *http.Request) {
 		"data":    saved.ToInfo(),
 	})
 }
+
+// Get handles GET /api/v1/exchange/api-keys.
+//
+// Returns the current API key configuration for the authenticated user.
+// The response always has HTTP 200:
+//   - Configured   → { "data": ApiKeyInfo }  (api_key_masked, status, timestamps)
+//   - Unconfigured → { "data": null }
+//
+// Secret Key is strictly Write-Only: SecretKeyEncrypted is never accessed or
+// serialized in this handler (SRS NFR-SEC-01, api.yaml §Exchange).
+//
+// Success (configured)    → 200  { data: ApiKeyInfo }
+// Success (unconfigured)  → 200  { data: null }
+// Server error            → 500  INTERNAL_ERROR
+func (h *ApiKeyHandler) Get(w http.ResponseWriter, r *http.Request) {
+	claims, ok := appMiddleware.ClaimsFromContext(r.Context())
+	if !ok {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "No active session.")
+		return
+	}
+
+	info, err := h.apiKeyLogic.GetApiKey(r.Context(), claims.UserID)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "An unexpected error occurred.")
+		return
+	}
+
+	// api.yaml specifies data: null when unconfigured — both branches return 200.
+	response.JSON(w, http.StatusOK, map[string]any{
+		"data": info, // nil serialises to JSON null automatically
+	})
+}
