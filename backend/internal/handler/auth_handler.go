@@ -111,3 +111,30 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 }
+
+// Logout handles POST /api/v1/auth/logout.
+//
+// Requires the token cookie to be present (401 if missing).
+// Clears the session cookie via Max-Age=0 per RFC6265 (FR-ACCESS-04, api.yaml).
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	if _, err := r.Cookie(tokenCookieName); err != nil {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "No active session.")
+		return
+	}
+
+	// MaxAge=-1 causes net/http to emit `Max-Age=0` on the wire, instructing
+	// the browser to delete the cookie immediately (RFC6265 §5.3).
+	http.SetCookie(w, &http.Cookie{
+		Name:     tokenCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   h.cfg.GoEnv == "production",
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	response.JSON(w, http.StatusOK, map[string]string{
+		"message": "Logout successful.",
+	})
+}
