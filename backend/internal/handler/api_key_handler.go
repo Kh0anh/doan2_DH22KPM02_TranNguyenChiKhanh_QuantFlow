@@ -127,3 +127,38 @@ func (h *ApiKeyHandler) Get(w http.ResponseWriter, r *http.Request) {
 		"data": info, // nil serialises to JSON null automatically
 	})
 }
+
+// Delete handles DELETE /api/v1/exchange/api-keys.
+//
+// Removes the API key configuration for the authenticated user, including the
+// AES-256-GCM encrypted secret. Before deletion, enforces the running-bot
+// constraint: if any bot_instance linked to this key is still Running, the
+// request is rejected with 409 (SRS UC-03. WBS 2.2.3, api.yaml §Exchange).
+//
+// Idempotent: returns 200 even when no configuration exists (no 404).
+//
+// Success              → 200  { message }
+// Active bots running  → 409  ACTIVE_BOTS_EXIST
+// Server error         → 500  INTERNAL_ERROR
+func (h *ApiKeyHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	claims, ok := appMiddleware.ClaimsFromContext(r.Context())
+	if !ok {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "No active session.")
+		return
+	}
+
+	if err := h.apiKeyLogic.DeleteApiKey(r.Context(), claims.UserID); err != nil {
+		switch {
+		case errors.Is(err, logic.ErrActiveBotsExist):
+			response.Error(w, http.StatusConflict, "ACTIVE_BOTS_EXIST",
+				"Cannot delete configuration while bots are still running. Please stop all bots first.")
+		default:
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "An unexpected error occurred.")
+		}
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"message": "Exchange connection removed.",
+	})
+}

@@ -22,6 +22,11 @@ var (
 	// key pair — wrong key, IP whitelist mismatch, or missing Futures Trading
 	// permission. HTTP handler maps this to 422 EXCHANGE_VALIDATION_FAILED.
 	ErrExchangeValidationFailed = errors.New("binance rejected the api key or insufficient permissions")
+
+	// ErrActiveBotsExist is returned when one or more bot_instances linked to the
+	// user's API key are still in Running status. HTTP handler maps this to
+	// 409 ACTIVE_BOTS_EXIST (api.yaml §DELETE /exchange/api-keys, WBS 2.2.3).
+	ErrActiveBotsExist = errors.New("active bots are using this api key")
 )
 
 // SaveApiKeyInput is the internal DTO passed from ApiKeyHandler to ApiKeyLogic.
@@ -133,4 +138,41 @@ func (l *ApiKeyLogic) GetApiKey(ctx context.Context, userID string) (*domain.Api
 	}
 	info := record.ToInfo()
 	return &info, nil
+}
+
+// DeleteApiKey enforces the running-bot constraint and removes the API key
+// configuration for the given user (WBS 2.2.3, api.yaml §DELETE /exchange/api-keys).
+//
+// Flow:
+//  1. FindByUserID — if no record exists, return nil (idempotent; no 404).
+//  2. HasRunningBotsByAPIKeyID — any Running bot blocks deletion → ErrActiveBotsExist.
+//  3. DeleteByUserID — hard-delete the record including secret_key_encrypted.
+//
+// Return patterns:
+//   - nil                     — success (or no record existed).
+//   - ErrActiveBotsExist      — → HTTP 409 ACTIVE_BOTS_EXIST.
+//   - other error             — unexpected DB error → HTTP 500.
+func (l *ApiKeyLogic) DeleteApiKey(ctx context.Context, userID string) error {
+	record, err := l.repo.FindByUserID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("api_key_logic: DeleteApiKey: %w", err)
+	}
+	if record == nil {
+		// No configuration exists — deletion is idempotent; nothing to do.
+		return nil
+	}
+
+	// Guard: reject deletion when any linked bot is still Running.
+	hasRunning, err := l.repo.HasRunningBotsByAPIKeyID(ctx, record.ID)
+	if err != nil {
+		return fmt.Errorf("api_key_logic: DeleteApiKey: %w", err)
+	}
+	if hasRunning {
+		return ErrActiveBotsExist
+	}
+
+	if err := l.repo.DeleteByUserID(ctx, userID); err != nil {
+		return fmt.Errorf("api_key_logic: DeleteApiKey: %w", err)
+	}
+	return nil
 }

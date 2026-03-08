@@ -73,15 +73,16 @@ func Setup(db *gorm.DB, cfg *config.Config) http.Handler {
 				r.Put("/profile", accountHandler.UpdateProfile)
 			})
 
-			// WBS 2.2.1: POST /exchange/api-keys (AES-256-GCM + Binance ping-verify) ✓
-			// WBS 2.2.2: GET  /exchange/api-keys (masked api_key, write-only secret)  ✓
-			// TODO(dev): DELETE /exchange/api-keys (WBS 2.2.3)
+			// WBS 2.2.1: POST   /exchange/api-keys (AES-256-GCM + Binance ping-verify) ✓
+			// WBS 2.2.2: GET    /exchange/api-keys (masked api_key, write-only secret)  ✓
+			// WBS 2.2.3: DELETE /exchange/api-keys (running-bot 409 constraint)         ✓
 			apiKeyRepo := repository.NewApiKeyRepository(db)
 			apiKeyLogic := logic.NewApiKeyLogic(apiKeyRepo, pkgcrypto.DeriveKey(cfg.AESKey))
 			apiKeyHandler := handler.NewApiKeyHandler(apiKeyLogic)
 			r.Route("/exchange", func(r chi.Router) {
 				r.Post("/api-keys", apiKeyHandler.Save)
 				r.Get("/api-keys", apiKeyHandler.Get)
+				r.Delete("/api-keys", apiKeyHandler.Delete)
 			})
 
 			// TODO(dev): Mount strategy handlers — CRUD + import/export /strategies (WBS 2.3.1-2.3.7)
