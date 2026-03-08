@@ -8,6 +8,7 @@ import (
 
 	"github.com/kh0anh/quantflow/config"
 	"github.com/kh0anh/quantflow/internal/logic"
+	appMiddleware "github.com/kh0anh/quantflow/internal/middleware"
 	pkgcrypto "github.com/kh0anh/quantflow/pkg/crypto"
 	"github.com/kh0anh/quantflow/pkg/response"
 )
@@ -115,14 +116,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Logout handles POST /api/v1/auth/logout.
 //
-// Requires the token cookie to be present (401 if missing).
-// Clears the session cookie via Max-Age=0 per RFC6265 (FR-ACCESS-04, api.yaml).
+// The JWTAuth middleware (WBS 2.1.5) guarantees a valid token exists before
+// this handler is reached. Clears the session cookie via Max-Age=0 per
+// RFC6265 (FR-ACCESS-04, api.yaml).
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	if _, err := r.Cookie(tokenCookieName); err != nil {
-		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "No active session.")
-		return
-	}
-
 	// MaxAge=-1 causes net/http to emit `Max-Age=0` on the wire, instructing
 	// the browser to delete the cookie immediately (RFC6265 §5.3).
 	http.SetCookie(w, &http.Cookie{
@@ -142,23 +139,12 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 // Me handles GET /api/v1/auth/me.
 //
-// Validates the JWT in the HttpOnly cookie and returns the UserProfile
-// embedded in the token claims — no DB round-trip required (WBS 2.1.3).
+// The JWTAuth middleware (WBS 2.1.5) has already verified the token and
+// injected *Claims into the context — no DB round-trip required (WBS 2.1.3).
 //
-// 200 → user profile from claims
-// 401 → missing cookie or invalid/expired token
+// 200 → user profile from context claims
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(tokenCookieName)
-	if err != nil {
-		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "No active session.")
-		return
-	}
-
-	claims, err := pkgcrypto.ParseToken(cookie.Value, h.cfg.JWTSecret)
-	if err != nil {
-		response.Error(w, http.StatusUnauthorized, "SESSION_EXPIRED", "Session has expired. Please log in again.")
-		return
-	}
+	claims, _ := appMiddleware.ClaimsFromContext(r.Context())
 
 	response.JSON(w, http.StatusOK, map[string]any{
 		"data": map[string]any{
@@ -173,26 +159,14 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 // Refresh handles POST /api/v1/auth/refresh.
 //
-// Validates the current JWT (must not be expired), then issues a new token
-// with a fresh 24-hour TTL and overwrites the HttpOnly cookie (Token Rotation
-// per WBS 2.1.4). The old token is implicitly invalidated because the browser
-// replaces it with the new one immediately.
+// The JWTAuth middleware (WBS 2.1.5) has already verified the token and
+// injected *Claims into the context. Issues a new token with a fresh 24-hour
+// TTL and overwrites the HttpOnly cookie (Token Rotation per WBS 2.1.4).
 //
 // 200 → new cookie set + { message, data: { expires_at } }
-// 401 → missing cookie, invalid signature, or expired token
 // 500 → token signing failure
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(tokenCookieName)
-	if err != nil {
-		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "No active session.")
-		return
-	}
-
-	claims, err := pkgcrypto.ParseToken(cookie.Value, h.cfg.JWTSecret)
-	if err != nil {
-		response.Error(w, http.StatusUnauthorized, "SESSION_EXPIRED", "Session has expired. Please log in again.")
-		return
-	}
+	claims, _ := appMiddleware.ClaimsFromContext(r.Context())
 
 	// Issue a new token carrying the same identity; reset TTL to 24h from now.
 	newToken, err := pkgcrypto.GenerateToken(
