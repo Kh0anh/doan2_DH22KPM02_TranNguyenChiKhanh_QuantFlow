@@ -11,18 +11,22 @@ import (
 // Claims is the custom JWT payload embedded in every issued token.
 // It extends RegisteredClaims with user-identity fields.
 type Claims struct {
-	UserID   string `json:"user_id"`
-	Username string `json:"username"`
+	UserID    string    `json:"user_id"`
+	Username  string    `json:"username"`
+	CreatedAt time.Time `json:"created_at"`
 	jwt.RegisteredClaims
 }
 
 // GenerateToken creates a signed HS256 JWT for the given user.
+// createdAt is the account creation timestamp embedded in Claims so that
+// GET /auth/me can return UserProfile without a database round-trip.
 // The token expires after ttl duration.
-func GenerateToken(userID, username, secret string, ttl time.Duration) (string, error) {
+func GenerateToken(userID, username, secret string, createdAt time.Time, ttl time.Duration) (string, error) {
 	now := time.Now().UTC()
 	claims := &Claims{
-		UserID:   userID,
-		Username: username,
+		UserID:    userID,
+		Username:  username,
+		CreatedAt: createdAt,
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
