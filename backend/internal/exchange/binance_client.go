@@ -3,6 +3,7 @@ package exchange
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/adshao/go-binance/v2/futures"
 	pkgcrypto "github.com/kh0anh/quantflow/pkg/crypto"
@@ -62,11 +63,17 @@ type BinanceProxy struct {
 // and immediately zeroing the plain-text byte slice to minimise the in-RAM
 // exposure window (SRS FR-CORE-01, NFR-SEC-01).
 //
+// The provided limiter is injected into the client's HTTP transport via
+// weightInterceptor — every Binance REST call made through this proxy is
+// automatically rate-gated and contributes to the adaptive feedback loop
+// (SRS FR-CORE-04, WBS 2.2.5).
+//
 // Parameters:
 //   - apiKey           — plain-text Binance Access Key (non-secret).
 //   - encryptedSecret  — AES-256-GCM ciphertext from the api_keys table.
 //   - aesKey           — 32-byte key from pkgcrypto.DeriveKey(cfg.AESKey).
-func NewBinanceProxy(apiKey, encryptedSecret string, aesKey []byte) (*BinanceProxy, error) {
+//   - limiter          — singleton ExchangeRateLimiter (shared across all proxies).
+func NewBinanceProxy(apiKey, encryptedSecret string, aesKey []byte, limiter *ExchangeRateLimiter) (*BinanceProxy, error) {
 	// Decrypt — the secret exists as plain-text only within this stack frame.
 	plaintext, err := pkgcrypto.Decrypt(encryptedSecret, aesKey)
 	if err != nil {
@@ -80,6 +87,15 @@ func NewBinanceProxy(apiKey, encryptedSecret string, aesKey []byte) (*BinancePro
 	// Zero-out the decrypted bytes immediately after the SDK has consumed them.
 	for i := range plaintext {
 		plaintext[i] = 0
+	}
+
+	// Inject the rate-limiting transport. All 9 proxy methods are gated
+	// automatically — no per-method changes required (WBS 2.2.5).
+	client.HTTPClient = &http.Client{
+		Transport: &weightInterceptor{
+			inner:   http.DefaultTransport,
+			limiter: limiter,
+		},
 	}
 
 	return &BinanceProxy{client: client}, nil

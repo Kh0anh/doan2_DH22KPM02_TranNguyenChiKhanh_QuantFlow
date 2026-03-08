@@ -7,6 +7,7 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/kh0anh/quantflow/config"
+	"github.com/kh0anh/quantflow/internal/exchange"
 	"github.com/kh0anh/quantflow/internal/handler"
 	"github.com/kh0anh/quantflow/internal/logic"
 	appMiddleware "github.com/kh0anh/quantflow/internal/middleware"
@@ -76,8 +77,10 @@ func Setup(db *gorm.DB, cfg *config.Config) http.Handler {
 			// WBS 2.2.1: POST   /exchange/api-keys (AES-256-GCM + Binance ping-verify) ✓
 			// WBS 2.2.2: GET    /exchange/api-keys (masked api_key, write-only secret)  ✓
 			// WBS 2.2.3: DELETE /exchange/api-keys (running-bot 409 constraint)         ✓
+			// WBS 2.2.5: Token Bucket rate limiter — singleton shared by all BinanceProxy instances ✓
+			exchangeLimiter := exchange.NewExchangeRateLimiter()
 			apiKeyRepo := repository.NewApiKeyRepository(db)
-			apiKeyLogic := logic.NewApiKeyLogic(apiKeyRepo, pkgcrypto.DeriveKey(cfg.AESKey))
+			apiKeyLogic := logic.NewApiKeyLogic(apiKeyRepo, pkgcrypto.DeriveKey(cfg.AESKey), exchangeLimiter)
 			apiKeyHandler := handler.NewApiKeyHandler(apiKeyLogic)
 			r.Route("/exchange", func(r chi.Router) {
 				r.Post("/api-keys", apiKeyHandler.Save)

@@ -46,16 +46,19 @@ type SaveApiKeyInput struct {
 	SecretKey string
 }
 
-// ApiKeyLogic orchestrates exchange key management business rules (WBS 2.2.1).
+// ApiKeyLogic orchestrates exchange key management business rules (WBS 2.2.1–2.2.5).
 type ApiKeyLogic struct {
-	repo   repository.ApiKeyRepository
-	aesKey []byte // 32-byte AES-256 key produced by pkgcrypto.DeriveKey
+	repo    repository.ApiKeyRepository
+	aesKey  []byte                        // 32-byte AES-256 key from pkgcrypto.DeriveKey
+	limiter *exchange.ExchangeRateLimiter // singleton shared across all BinanceProxy instances
 }
 
 // NewApiKeyLogic constructs an ApiKeyLogic.
-// aesKey must be exactly 32 bytes — use pkgcrypto.DeriveKey(cfg.AESKey).
-func NewApiKeyLogic(repo repository.ApiKeyRepository, aesKey []byte) *ApiKeyLogic {
-	return &ApiKeyLogic{repo: repo, aesKey: aesKey}
+//   - aesKey must be exactly 32 bytes — use pkgcrypto.DeriveKey(cfg.AESKey).
+//   - limiter is the singleton ExchangeRateLimiter created in router.go and
+//     shared by every BinanceProxy built via BuildProxy (WBS 2.2.5).
+func NewApiKeyLogic(repo repository.ApiKeyRepository, aesKey []byte, limiter *exchange.ExchangeRateLimiter) *ApiKeyLogic {
+	return &ApiKeyLogic{repo: repo, aesKey: aesKey, limiter: limiter}
 }
 
 // SaveApiKey implements the full POST /exchange/api-keys business flow
@@ -204,7 +207,7 @@ func (l *ApiKeyLogic) BuildProxy(ctx context.Context, userID string) (*exchange.
 		return nil, ErrAPIKeyNotConfigured
 	}
 
-	proxy, err := exchange.NewBinanceProxy(record.ApiKey, record.SecretKeyEncrypted, l.aesKey)
+	proxy, err := exchange.NewBinanceProxy(record.ApiKey, record.SecretKeyEncrypted, l.aesKey, l.limiter)
 	if err != nil {
 		return nil, fmt.Errorf("api_key_logic: BuildProxy: %w", err)
 	}

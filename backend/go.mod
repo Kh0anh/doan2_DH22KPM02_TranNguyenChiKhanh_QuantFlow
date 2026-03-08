@@ -1,6 +1,6 @@
 module github.com/kh0anh/quantflow
 
-go 1.24.1
+go 1.25.0
 
 require (
 	github.com/go-chi/chi/v5 v5.2.5
@@ -27,4 +27,5 @@ require (
 	github.com/shopspring/decimal v1.4.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
 )
