@@ -11,6 +11,7 @@ import (
 	"github.com/kh0anh/quantflow/internal/logic"
 	appMiddleware "github.com/kh0anh/quantflow/internal/middleware"
 	"github.com/kh0anh/quantflow/internal/repository"
+	pkgcrypto "github.com/kh0anh/quantflow/pkg/crypto"
 	"github.com/kh0anh/quantflow/pkg/response"
 	"gorm.io/gorm"
 )
@@ -72,8 +73,14 @@ func Setup(db *gorm.DB, cfg *config.Config) http.Handler {
 				r.Put("/profile", accountHandler.UpdateProfile)
 			})
 
-			// TODO(dev): Mount exchange API-key handlers — POST/GET/DELETE /exchange/api-keys (WBS 2.2.1-2.2.3)
+			// WBS 2.2.1: POST /exchange/api-keys (AES-256-GCM + Binance ping-verify)
+			// TODO(dev): GET /exchange/api-keys  (WBS 2.2.2)
+			// TODO(dev): DELETE /exchange/api-keys (WBS 2.2.3)
+			apiKeyRepo := repository.NewApiKeyRepository(db)
+			apiKeyLogic := logic.NewApiKeyLogic(apiKeyRepo, pkgcrypto.DeriveKey(cfg.AESKey))
+			apiKeyHandler := handler.NewApiKeyHandler(apiKeyLogic)
 			r.Route("/exchange", func(r chi.Router) {
+				r.Post("/api-keys", apiKeyHandler.Save)
 			})
 
 			// TODO(dev): Mount strategy handlers — CRUD + import/export /strategies (WBS 2.3.1-2.3.7)
