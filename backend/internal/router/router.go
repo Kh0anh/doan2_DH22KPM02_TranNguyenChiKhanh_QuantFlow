@@ -7,6 +7,9 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/kh0anh/quantflow/config"
+	"github.com/kh0anh/quantflow/internal/handler"
+	"github.com/kh0anh/quantflow/internal/logic"
+	"github.com/kh0anh/quantflow/internal/repository"
 	"github.com/kh0anh/quantflow/pkg/response"
 	"gorm.io/gorm"
 )
@@ -29,13 +32,24 @@ func Setup(db *gorm.DB, cfg *config.Config) http.Handler {
 		MaxAge:           300,  // Preflight cache: 5 minutes
 	}))
 
+	// --- Dependency wiring (Clean Architecture: handler → logic → repository) ---
+	userRepo := repository.NewUserRepository(db)
+	bruteForce := logic.NewBruteForceStore()
+	authLogic := logic.NewAuthLogic(userRepo, bruteForce)
+	authHandler := handler.NewAuthHandler(authLogic, cfg)
+
 	r.Route("/api/v1", func(r chi.Router) {
 
 		// Health check — consumed by Docker HEALTHCHECK and monitoring
 		r.Get("/health", healthHandler)
 
-		// TODO(dev): Mount auth handlers — POST /auth/login, POST /auth/logout, GET /auth/me, POST /auth/refresh (WBS 2.1.1-2.1.4)
+		// Auth routes — public endpoints (no JWT middleware required here).
+		// WBS 2.1.1: POST /auth/login  (implemented)
+		// WBS 2.1.2: POST /auth/logout (TODO)
+		// WBS 2.1.3: GET  /auth/me     (TODO)
+		// WBS 2.1.4: POST /auth/refresh (TODO)
 		r.Route("/auth", func(r chi.Router) {
+			r.Post("/login", authHandler.Login)
 		})
 
 		// TODO(dev): Mount account handler — PUT /account/profile (WBS 2.1.6)
