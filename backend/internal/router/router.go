@@ -93,12 +93,14 @@ func Setup(db *gorm.DB, cfg *config.Config) http.Handler {
 			// WBS 2.3.3: GET    /strategies/{id} (detail + active Bot warning) ✓
 			// WBS 2.3.4: PUT    /strategies/{id} (auto version_number++) ✓
 			// WBS 2.3.5: DELETE /strategies/{id} (check Running Bot then 409) ✓
+			// WBS 2.3.6: POST   /strategies/import (Validate JSON Schema) ✓
 			strategyRepo := repository.NewStrategyRepository(db)
 			strategyLogic := logic.NewStrategyLogic(strategyRepo)
 			strategyHandler := handler.NewStrategyHandler(strategyLogic)
 			r.Route("/strategies", func(r chi.Router) {
 				r.Get("/", strategyHandler.List)
 				r.Post("/", strategyHandler.Create)
+				r.Post("/import", strategyHandler.Import)
 				r.Get("/{id}", strategyHandler.Get)
 				r.Put("/{id}", strategyHandler.Update)
 				r.Delete("/{id}", strategyHandler.Delete)

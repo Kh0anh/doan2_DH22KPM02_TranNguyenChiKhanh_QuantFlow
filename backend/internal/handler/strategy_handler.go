@@ -293,3 +293,58 @@ func (h *StrategyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		"message": "Strategy deleted successfully.",
 	})
 }
+
+// importStrategyRequest is the JSON body expected by POST /strategies/import.
+// Mirrors api.yaml §ImportStrategyRequest.
+type importStrategyRequest struct {
+	Name      string          `json:"name"`
+	LogicJSON json.RawMessage `json:"logic_json"`
+}
+
+// Import handles POST /api/v1/strategies/import.
+//
+// Flow (WBS 2.3.6, api.yaml §POST /strategies/import, SRS FR-DESIGN-13):
+//  1. Extract JWT claims from context.
+//  2. Decode JSON body → importStrategyRequest.
+//  3. Delegate to StrategyLogic.ImportStrategy.
+//  4. Both ErrInvalidJSONStructure and ErrMissingEventTrigger → 400 INVALID_JSON_STRUCTURE.
+//  5. Success → 201 { message, data: StrategyCreated }.
+//
+// Success              → 201  { message, data: StrategyCreated }
+// Invalid JSON         → 400  INVALID_JSON_STRUCTURE
+// Auth ✗               → 401  UNAUTHORIZED
+// Server ✗             → 500  INTERNAL_ERROR
+func (h *StrategyHandler) Import(w http.ResponseWriter, r *http.Request) {
+	claims, ok := appMiddleware.ClaimsFromContext(r.Context())
+	if !ok {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "No active session.")
+		return
+	}
+
+	var req importStrategyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "INVALID_JSON_STRUCTURE", "Invalid JSON structure. Please check the file format and try again.")
+		return
+	}
+
+	input := logic.ImportStrategyInput{
+		Name:      req.Name,
+		LogicJSON: req.LogicJSON,
+	}
+
+	created, err := h.strategyLogic.ImportStrategy(r.Context(), claims.UserID, input)
+	if err != nil {
+		switch {
+		case errors.Is(err, logic.ErrInvalidJSONStructure), errors.Is(err, logic.ErrMissingEventTrigger):
+			response.Error(w, http.StatusBadRequest, "INVALID_JSON_STRUCTURE", "Invalid JSON structure. Please check the file format and try again.")
+		default:
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "An internal error occurred. Please try again later.")
+		}
+		return
+	}
+
+	response.JSON(w, http.StatusCreated, map[string]any{
+		"message": "Strategy imported successfully.",
+		"data":    created,
+	})
+}

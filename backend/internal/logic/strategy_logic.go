@@ -399,3 +399,74 @@ func (l *StrategyLogic) DeleteStrategy(ctx context.Context, userID, strategyID s
 	}
 	return nil, nil
 }
+
+// ImportStrategyInput is the internal DTO passed from StrategyHandler to
+// StrategyLogic for POST /strategies/import (WBS 2.3.6).
+type ImportStrategyInput struct {
+	// Name is the human-readable strategy name (required, non-blank).
+	Name string
+	// LogicJSON is the raw Blockly JSON payload from the imported file.
+	// Must conform to the BlocklyLogicJson schema and contain an event_on_candle block.
+	LogicJSON json.RawMessage
+}
+
+// ImportStrategy implements POST /strategies/import (WBS 2.3.6,
+// api.yaml §POST /strategies/import, SRS FR-DESIGN-13).
+//
+// Business rules:
+//  1. Validate name is non-blank.
+//  2. Validate logic_json structure and event_on_candle presence.
+//  3. Fixed status = "Valid" — import implies a well-formed, ready-to-use strategy.
+//  4. Atomically persist strategy + version_number=1 via repo.Create (reused).
+//
+// All validation failures collapse to ErrInvalidJSONStructure so the handler
+// maps everything to a single 400 INVALID_JSON_STRUCTURE per api.yaml spec.
+//
+// Return patterns:
+//   - (*StrategyCreated, nil)         — success → HTTP 201.
+//   - (nil, ErrInvalidJSONStructure)  — malformed JSON or missing required keys → HTTP 400.
+//   - (nil, ErrMissingEventTrigger)   — no event_on_candle block → HTTP 400 (same code).
+//   - (nil, other)                    — unexpected server error → HTTP 500.
+func (l *StrategyLogic) ImportStrategy(ctx context.Context, userID string, input ImportStrategyInput) (*domain.StrategyCreated, error) {
+	// 1. Name must be non-blank.
+	if strings.TrimSpace(input.Name) == "" {
+		return nil, ErrInvalidJSONStructure
+	}
+
+	// 2. Validate logic_json structure and presence of event_on_candle block.
+	found, err := hasEventTriggerBlock(input.LogicJSON)
+	if err != nil {
+		return nil, ErrInvalidJSONStructure
+	}
+	if !found {
+		return nil, ErrMissingEventTrigger
+	}
+
+	// 3. Fixed status = "Valid" for all imported strategies.
+	const importStatus = domain.StrategyStatusValid
+
+	// 4. Build entities and persist.
+	strategy := &domain.Strategy{
+		UserID: userID,
+		Name:   strings.TrimSpace(input.Name),
+		Status: importStatus,
+	}
+	version := &domain.StrategyVersion{
+		VersionNumber: 1,
+		LogicJSON:     []byte(input.LogicJSON),
+		Status:        importStatus,
+	}
+
+	if err := l.repo.Create(ctx, strategy, version); err != nil {
+		return nil, err
+	}
+
+	// 5. Project to response DTO.
+	return &domain.StrategyCreated{
+		ID:        strategy.ID,
+		Name:      strategy.Name,
+		Version:   1,
+		Status:    strategy.Status,
+		CreatedAt: strategy.CreatedAt,
+	}, nil
+}
