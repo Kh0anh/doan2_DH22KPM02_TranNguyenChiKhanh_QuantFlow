@@ -24,6 +24,11 @@ type StrategyRepository interface {
 	// (version_number = 1) inside a single database transaction.
 	// strategy.ID and version.ID are back-filled by PostgreSQL gen_random_uuid().
 	Create(ctx context.Context, strategy *domain.Strategy, version *domain.StrategyVersion) error
+
+	// FindByID returns the full detail of a strategy owned by the given user,
+	// including its latest logic_json and the IDs of any Running bot_instances.
+	// Returns (nil, nil) when the strategy does not exist or belongs to another user.
+	FindByID(ctx context.Context, strategyID, userID string) (*domain.StrategyDetail, error)
 }
 
 type strategyRepository struct {
@@ -122,4 +127,62 @@ func (r *strategyRepository) Create(ctx context.Context, strategy *domain.Strate
 		}
 		return nil
 	})
+}
+
+// FindByID fetches full strategy detail for the given (strategyID, userID) pair.
+//
+// Two queries are executed:
+//  1. LATERAL JOIN to retrieve strategy metadata + latest version_number + logic_json.
+//  2. SELECT id FROM bot_instances WHERE strategy_id=? AND user_id=? AND status='Running'
+//     to collect active bot IDs for the warning banner.
+//
+// Returns (nil, nil) when the row does not exist or belongs to another user.
+func (r *strategyRepository) FindByID(ctx context.Context, strategyID, userID string) (*domain.StrategyDetail, error) {
+	// Scan directly into StrategyDetail — GORM derives column names from
+	// the snake_case of each exported field name (id, name, status, version,
+	// logic_json, created_at, updated_at). warning and active_bot_ids are
+	// not present in the DB row; they are filled afterwards.
+	var detail domain.StrategyDetail
+
+	res := r.db.WithContext(ctx).
+		Table("strategies s").
+		Select(`s.id,
+			s.name,
+			s.status,
+			s.created_at,
+			s.updated_at,
+			COALESCE(sv.version_number, 0) AS version,
+			sv.logic_json`).
+		Joins(`LEFT JOIN LATERAL (
+			SELECT version_number, logic_json
+			FROM strategy_versions
+			WHERE strategy_id = s.id
+			ORDER BY version_number DESC
+			LIMIT 1
+		) sv ON true`).
+		Where("s.id = ? AND s.user_id = ?", strategyID, userID).
+		Scan(&detail)
+
+	if res.Error != nil {
+		return nil, fmt.Errorf("strategy_repo: FindByID: scan: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return nil, nil
+	}
+
+	// --- Query 2: collect Running bot IDs linked to this strategy ---------------
+	var botIDs []string
+	if err := r.db.WithContext(ctx).
+		Table("bot_instances").
+		Select("id").
+		Where("strategy_id = ? AND user_id = ? AND status = 'Running'", strategyID, userID).
+		Pluck("id", &botIDs).Error; err != nil {
+		return nil, fmt.Errorf("strategy_repo: FindByID: bot check: %w", err)
+	}
+
+	if len(botIDs) > 0 {
+		detail.ActiveBotIDs = botIDs
+	}
+
+	return &detail, nil
 }

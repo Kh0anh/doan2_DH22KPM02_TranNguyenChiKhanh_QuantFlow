@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/kh0anh/quantflow/internal/logic"
 	appMiddleware "github.com/kh0anh/quantflow/internal/middleware"
 	"github.com/kh0anh/quantflow/pkg/response"
@@ -137,5 +138,43 @@ func (h *StrategyHandler) Create(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusCreated, map[string]any{
 		"message": "Strategy saved successfully.",
 		"data":    created,
+	})
+}
+
+// Get handles GET /api/v1/strategies/{id}.
+//
+// Flow (WBS 2.3.3, api.yaml §GET /strategies/{id}):
+//  1. Extract JWT claims from context.
+//  2. Read {id} path parameter via chi.URLParam.
+//  3. Delegate to StrategyLogic.GetStrategy (ownership check + active bot lookup).
+//  4. Return 200 { data: StrategyDetail }.
+//     If active bots exist, warning and active_bot_ids are included automatically.
+//
+// Success      → 200  { data: StrategyDetail }
+// Not found    → 404  STRATEGY_NOT_FOUND
+// Auth ✗       → 401  UNAUTHORIZED
+// Server ✗     → 500  INTERNAL_ERROR
+func (h *StrategyHandler) Get(w http.ResponseWriter, r *http.Request) {
+	claims, ok := appMiddleware.ClaimsFromContext(r.Context())
+	if !ok {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "No active session.")
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+
+	detail, err := h.strategyLogic.GetStrategy(r.Context(), claims.UserID, id)
+	if err != nil {
+		switch {
+		case errors.Is(err, logic.ErrStrategyNotFound):
+			response.Error(w, http.StatusNotFound, "STRATEGY_NOT_FOUND", "Strategy not found.")
+		default:
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "An internal error occurred. Please try again later.")
+		}
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"data": detail,
 	})
 }

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -62,4 +63,21 @@ type StrategyCreated struct {
 	Version   int       `json:"version"`
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// StrategyDetail is the response DTO returned by GET /strategies/{id}.
+// LogicJSON carries the raw Blockly JSON bytes (api.yaml §BlocklyLogicJson).
+// Warning and ActiveBotIDs are omitted from the JSON output when nil/empty —
+// they are populated only when at least one bot_instance with status=Running
+// references this strategy (WBS 2.3.3, api.yaml §StrategyDetail).
+type StrategyDetail struct {
+	ID           string          `json:"id"`
+	Name         string          `json:"name"`
+	Version      int             `json:"version"`
+	Status       string          `json:"status"`
+	LogicJSON    json.RawMessage `json:"logic_json"`
+	Warning      *string         `json:"warning,omitempty"`
+	ActiveBotIDs []string        `json:"active_bot_ids,omitempty"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
 }

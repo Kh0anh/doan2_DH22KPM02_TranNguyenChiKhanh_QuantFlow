@@ -33,6 +33,10 @@ var (
 	// structure does not conform to the expected Blockly JSON shape.
 	// Handler maps this to 400 INVALID_JSON_STRUCTURE.
 	ErrInvalidJSONStructure = errors.New("logic_json has invalid or unexpected structure")
+
+	// ErrStrategyNotFound is returned when the requested strategy does not exist
+	// or does not belong to the authenticated user. Handler maps this to 404.
+	ErrStrategyNotFound = errors.New("strategy not found")
 )
 
 // ListStrategiesInput carries the validated query parameters for list strategies.
@@ -260,4 +264,36 @@ func hasEventTriggerBlock(logicJSON []byte) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// GetStrategy retrieves the full detail of a single strategy for the given user
+// (WBS 2.3.3, api.yaml §GET /strategies/{id}).
+//
+// Business rules:
+//   - Returns ErrStrategyNotFound when the strategy does not exist or belongs
+//     to a different user (ownership enforced at repository layer).
+//   - Appends a warning message and populates active_bot_ids when the strategy
+//     is referenced by one or more bot_instances with status=Running.
+//
+// Return patterns:
+//   - (*StrategyDetail, nil)         — found, no active bots.
+//   - (*StrategyDetail, nil)         — found, warning + active_bot_ids populated.
+//   - (nil, ErrStrategyNotFound)     — not found or not owned → HTTP 404.
+//   - (nil, other)                   — unexpected server error → HTTP 500.
+func (l *StrategyLogic) GetStrategy(ctx context.Context, userID, strategyID string) (*domain.StrategyDetail, error) {
+	detail, err := l.repo.FindByID(ctx, strategyID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil {
+		return nil, ErrStrategyNotFound
+	}
+
+	// Populate warning when active (Running) bots reference this strategy.
+	if len(detail.ActiveBotIDs) > 0 {
+		msg := "This strategy is being used by running Bot(s). Any changes will only apply to new runs."
+		detail.Warning = &msg
+	}
+
+	return detail, nil
 }
