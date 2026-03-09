@@ -2,6 +2,8 @@ package logic
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"math"
 	"strings"
 
@@ -14,6 +16,23 @@ const (
 	defaultStrategyPage  = 1
 	defaultStrategyLimit = 20
 	maxStrategyLimit     = 100
+
+	// eventTriggerBlockType is the canonical Blockly block type name for the
+	// Event Trigger block (blockly.md §3.1.1). Every valid strategy must contain
+	// at least one block of this type at the top level of blocks.blocks[].
+	eventTriggerBlockType = "event_on_candle"
+)
+
+// Sentinel errors for POST /strategies — mapped to specific HTTP codes by the handler.
+var (
+	// ErrMissingEventTrigger is returned when logic_json contains no top-level
+	// event_on_candle block. Handler maps this to 400 MISSING_EVENT_TRIGGER.
+	ErrMissingEventTrigger = errors.New("strategy must contain an event_on_candle block")
+
+	// ErrInvalidJSONStructure is returned when logic_json cannot be parsed or its
+	// structure does not conform to the expected Blockly JSON shape.
+	// Handler maps this to 400 INVALID_JSON_STRUCTURE.
+	ErrInvalidJSONStructure = errors.New("logic_json has invalid or unexpected structure")
 )
 
 // ListStrategiesInput carries the validated query parameters for list strategies.
@@ -103,4 +122,142 @@ func (l *StrategyLogic) ListStrategies(ctx context.Context, userID string, input
 			TotalPages: totalPages,
 		},
 	}, nil
+}
+
+// CreateStrategyInput is the internal DTO passed from StrategyHandler to StrategyLogic.
+type CreateStrategyInput struct {
+	// Name is the human-readable strategy name (required, non-blank).
+	Name string
+	// LogicJSON is the raw Blockly JSON payload exactly as received from the
+	// client request body. It is stored as-is into strategy_versions.logic_json.
+	LogicJSON json.RawMessage
+	// Status is the desired initial status. Defaults to "Draft" when blank or
+	// not one of the recognised values (Draft / Valid).
+	Status string
+}
+
+// CreateStrategy implements the POST /strategies business flow (WBS 2.3.2,
+// api.yaml §POST /strategies, SRS FR-DESIGN-11):
+//
+//  1. Validate name is non-blank.
+//  2. Validate logic_json parses correctly and contains an event_on_candle block
+//     at the top level of blocks.blocks[] (SRS FR-DESIGN-03).
+//  3. Normalise status to "Draft" when omitted or unrecognised.
+//  4. Atomically insert strategy + strategy_version (version_number=1).
+//  5. Return StrategyCreated DTO.
+//
+// Return patterns:
+//   - (*StrategyCreated, nil)            — success → HTTP 201.
+//   - (nil, ErrInvalidJSONStructure)     — malformed JSON → HTTP 400.
+//   - (nil, ErrMissingEventTrigger)      — no event block → HTTP 400.
+//   - (nil, other)                       — unexpected server error → HTTP 500.
+func (l *StrategyLogic) CreateStrategy(ctx context.Context, userID string, input CreateStrategyInput) (*domain.StrategyCreated, error) {
+	// 1. Name must be non-blank.
+	if strings.TrimSpace(input.Name) == "" {
+		return nil, ErrInvalidJSONStructure
+	}
+
+	// 2. Validate logic_json structure and presence of event_on_candle block.
+	found, err := hasEventTriggerBlock(input.LogicJSON)
+	if err != nil {
+		return nil, ErrInvalidJSONStructure
+	}
+	if !found {
+		return nil, ErrMissingEventTrigger
+	}
+
+	// 3. Normalise status.
+	status := input.Status
+	if status != domain.StrategyStatusDraft && status != domain.StrategyStatusValid {
+		status = domain.StrategyStatusDraft
+	}
+
+	// 4. Build entities and persist.
+	strategy := &domain.Strategy{
+		UserID: userID,
+		Name:   strings.TrimSpace(input.Name),
+		Status: status,
+	}
+	version := &domain.StrategyVersion{
+		VersionNumber: 1,
+		LogicJSON:     []byte(input.LogicJSON),
+		Status:        status,
+	}
+
+	if err := l.repo.Create(ctx, strategy, version); err != nil {
+		return nil, err
+	}
+
+	// 5. Project to response DTO.
+	return &domain.StrategyCreated{
+		ID:        strategy.ID,
+		Name:      strategy.Name,
+		Version:   1,
+		Status:    strategy.Status,
+		CreatedAt: strategy.CreatedAt,
+	}, nil
+}
+
+// hasEventTriggerBlock parses a Blockly JSON payload and reports whether it
+// contains at least one top-level block of type "event_on_candle".
+//
+// Expected Blockly JSON shape (blockly.md §3.1.1):
+//
+//	{
+//	  "blocks": {
+//	    "languageVersion": 0,
+//	    "blocks": [ { "type": "event_on_candle", ... }, ... ]
+//	  }
+//	}
+//
+// Returns:
+//   - (true,  nil)  — event block present.
+//   - (false, nil)  — valid JSON but no event block found.
+//   - (false, err)  — JSON is malformed or missing required keys.
+func hasEventTriggerBlock(logicJSON []byte) (bool, error) {
+	if len(logicJSON) == 0 {
+		return false, ErrInvalidJSONStructure
+	}
+
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(logicJSON, &root); err != nil {
+		return false, err
+	}
+
+	blocksOuter, ok := root["blocks"]
+	if !ok {
+		return false, ErrInvalidJSONStructure
+	}
+
+	var blocksWrapper map[string]json.RawMessage
+	if err := json.Unmarshal(blocksOuter, &blocksWrapper); err != nil {
+		return false, ErrInvalidJSONStructure
+	}
+
+	blocksArray, ok := blocksWrapper["blocks"]
+	if !ok {
+		// No blocks key means an empty workspace — no event trigger.
+		return false, nil
+	}
+
+	var topBlocks []map[string]json.RawMessage
+	if err := json.Unmarshal(blocksArray, &topBlocks); err != nil {
+		return false, ErrInvalidJSONStructure
+	}
+
+	for _, block := range topBlocks {
+		rawType, ok := block["type"]
+		if !ok {
+			continue
+		}
+		var blockType string
+		if err := json.Unmarshal(rawType, &blockType); err != nil {
+			continue
+		}
+		if blockType == eventTriggerBlockType {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }

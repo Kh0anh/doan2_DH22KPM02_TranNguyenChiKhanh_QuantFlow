@@ -53,3 +53,13 @@ type StrategySummary struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// StrategyCreated is the response DTO returned by POST /strategies on 201 Created.
+// Matches api.yaml §StrategyCreated — version is always 1 for a freshly created strategy.
+type StrategyCreated struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Version   int       `json:"version"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+}

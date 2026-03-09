@@ -19,6 +19,11 @@ type StrategyRepository interface {
 	//   - total is the unfilitered count for the current search term, used by
 	//     the caller to compute total_pages.
 	ListWithPagination(ctx context.Context, userID, search string, page, limit int) ([]domain.StrategySummary, int64, error)
+
+	// Create atomically inserts a new strategy record and its initial version
+	// (version_number = 1) inside a single database transaction.
+	// strategy.ID and version.ID are back-filled by PostgreSQL gen_random_uuid().
+	Create(ctx context.Context, strategy *domain.Strategy, version *domain.StrategyVersion) error
 }
 
 type strategyRepository struct {
@@ -95,4 +100,26 @@ func (r *strategyRepository) ListWithPagination(
 	}
 
 	return summaries, total, nil
+}
+
+// Create atomically inserts a strategy and its initial version_number=1 record
+// inside a single GORM transaction.
+//
+// Sequence:
+//  1. INSERT into strategies → PostgreSQL fills strategy.ID via gen_random_uuid().
+//  2. Set version.StrategyID = strategy.ID.
+//  3. INSERT into strategy_versions.
+//
+// Both inserts are rolled back automatically if either step fails.
+func (r *strategyRepository) Create(ctx context.Context, strategy *domain.Strategy, version *domain.StrategyVersion) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(strategy).Error; err != nil {
+			return fmt.Errorf("strategy_repo: Create: insert strategy: %w", err)
+		}
+		version.StrategyID = strategy.ID
+		if err := tx.Create(version).Error; err != nil {
+			return fmt.Errorf("strategy_repo: Create: insert version: %w", err)
+		}
+		return nil
+	})
 }
