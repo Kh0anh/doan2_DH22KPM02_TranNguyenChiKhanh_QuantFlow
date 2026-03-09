@@ -2,7 +2,7 @@ package database
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/kh0anh/quantflow/config"
@@ -53,6 +53,6 @@ func Connect(cfg *config.Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("database: ping failed: %w", err)
 	}
 
-	log.Printf("[database] Connected to PostgreSQL at %s:%s/%s", cfg.DBHost, cfg.DBPort, cfg.DBName)
+	slog.Info("connected to PostgreSQL", "component", "database", "host", cfg.DBHost, "port", cfg.DBPort, "db", cfg.DBName)
 	return db, nil
 }

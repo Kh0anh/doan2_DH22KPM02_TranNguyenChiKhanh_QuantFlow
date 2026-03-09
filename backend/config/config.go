@@ -1,7 +1,7 @@
 package config
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -33,6 +33,9 @@ type Config struct {
 	// the backend subscribes to on startup (WBS 2.4.1).
 	// Example: BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT
 	WatchedSymbols []string
+
+	// Logging
+	LogLevel string // LOG_LEVEL env var: debug | info | warn | error (default: info)
 }
 
 // Load reads configuration from environment variables.
@@ -41,7 +44,7 @@ type Config struct {
 func Load() *Config {
 	// Best-effort: load .env in development; ignore error in production/Docker.
 	if err := godotenv.Load(); err != nil {
-		log.Println("[config] No .env file found, reading from environment")
+		slog.Info("no .env file found, reading from environment", "component", "config")
 	}
 
 	cfg := &Config{
@@ -57,6 +60,8 @@ func Load() *Config {
 
 		JWTSecret: getEnv("JWT_SECRET", ""),
 		AESKey:    getEnv("AES_KEY", ""),
+
+		LogLevel: getEnv("LOG_LEVEL", "info"),
 	}
 
 	rawOrigins := getEnv("CORS_ALLOWED_ORIGINS", "http://localhost,http://localhost:3000")
@@ -68,10 +73,12 @@ func Load() *Config {
 	// Guard: secrets must not be empty in non-development environments
 	if cfg.GoEnv != "development" {
 		if cfg.JWTSecret == "" {
-			log.Fatal("[config] JWT_SECRET must be set in non-development environments")
+			slog.Error("JWT_SECRET must be set in non-development environments", "component", "config")
+			os.Exit(1)
 		}
 		if cfg.AESKey == "" {
-			log.Fatal("[config] AES_KEY must be set in non-development environments")
+			slog.Error("AES_KEY must be set in non-development environments", "component", "config")
+			os.Exit(1)
 		}
 	}
 

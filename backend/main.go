@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"os/signal"
 	"syscall"
@@ -12,16 +12,18 @@ import (
 	"github.com/kh0anh/quantflow/config"
 	"github.com/kh0anh/quantflow/database"
 	"github.com/kh0anh/quantflow/internal/router"
+	"github.com/kh0anh/quantflow/pkg/logger"
 )
 
 // main is the root entry point for `go run .` during local development.
 // The canonical Dockerfile build target remains cmd/server/main.go.
 func main() {
 	cfg := config.Load()
+	logger.Setup(cfg)
 
 	db, err := database.Connect(cfg)
 	if err != nil {
-		log.Fatalf("[server] Database connection failed: %v", err)
+		logger.Fatal("database connection failed", "component", "server", "error", err)
 	}
 
 	handler := router.Setup(db, cfg)
@@ -38,22 +40,22 @@ func main() {
 	defer stop()
 
 	go func() {
-		log.Printf("[server] QuantFlow backend listening on :%s (env=%s)", cfg.ServerPort, cfg.GoEnv)
+		slog.Info("QuantFlow backend listening", "component", "server", "port", cfg.ServerPort, "env", cfg.GoEnv)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("[server] ListenAndServe error: %v", err)
+			logger.Fatal("ListenAndServe error", "component", "server", "error", err)
 		}
 	}()
 
 	<-ctx.Done()
 	stop()
-	log.Println("[server] Shutdown signal received, draining connections...")
+	slog.Info("shutdown signal received, draining connections", "component", "server")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("[server] Graceful shutdown failed: %v", err)
+		slog.Error("graceful shutdown failed", "component", "server", "error", err)
 	} else {
-		log.Println("[server] Server stopped cleanly.")
+		slog.Info("server stopped cleanly", "component", "server")
 	}
 }
