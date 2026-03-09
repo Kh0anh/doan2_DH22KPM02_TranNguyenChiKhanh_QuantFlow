@@ -108,6 +108,13 @@ func Setup(db *gorm.DB, cfg *config.Config) http.Handler {
 				r.Delete("/{id}", strategyHandler.Delete)
 			})
 
+			// WBS 2.4.1: Hybrid Data Sync — Binance WS + REST fallback, INSERT candles ✓
+			// CandleRepository and KlineSyncService are wired here and will be injected
+			// into MarketLogic (WBS 2.4.3-2.4.4) and BacktestLogic (WBS 2.6.1).
+			candleRepo := repository.NewCandleRepository(db)
+			klineSyncSvc := exchange.NewKlineSyncService(candleRepo, exchangeLimiter)
+			_ = klineSyncSvc // consumed by market_logic (WBS 2.4.3) and bot engine (WBS 2.7.2)
+
 			// TODO(dev): Mount backtest handlers — POST/GET/cancel /backtests (WBS 2.6.5)
 			r.Route("/backtests", func(r chi.Router) {
 			})
