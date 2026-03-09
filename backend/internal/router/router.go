@@ -91,6 +91,7 @@ func Setup(db *gorm.DB, cfg *config.Config) http.Handler {
 			// WBS 2.3.1: GET  /strategies (page pagination + ILIKE search) ✓
 			// WBS 2.3.2: POST /strategies (event_on_candle validation + version 1) ✓
 			// WBS 2.3.3: GET  /strategies/{id} (detail + active Bot warning) ✓
+			// WBS 2.3.4: PUT  /strategies/{id} (auto version_number++) ✓
 			strategyRepo := repository.NewStrategyRepository(db)
 			strategyLogic := logic.NewStrategyLogic(strategyRepo)
 			strategyHandler := handler.NewStrategyHandler(strategyLogic)
@@ -98,6 +99,7 @@ func Setup(db *gorm.DB, cfg *config.Config) http.Handler {
 				r.Get("/", strategyHandler.List)
 				r.Post("/", strategyHandler.Create)
 				r.Get("/{id}", strategyHandler.Get)
+				r.Put("/{id}", strategyHandler.Update)
 			})
 
 			// TODO(dev): Mount backtest handlers — POST/GET/cancel /backtests (WBS 2.6.5)

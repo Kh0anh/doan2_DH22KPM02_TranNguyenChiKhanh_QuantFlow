@@ -297,3 +297,72 @@ func (l *StrategyLogic) GetStrategy(ctx context.Context, userID, strategyID stri
 
 	return detail, nil
 }
+
+// UpdateStrategyInput is the internal DTO passed from StrategyHandler to StrategyLogic
+// for PUT /strategies/{id} (WBS 2.3.4).
+// All fields are optional — omitted fields retain their current database values.
+type UpdateStrategyInput struct {
+	// Name is the new strategy name. Empty string = keep existing.
+	Name string
+	// LogicJSON is the updated Blockly JSON payload. nil/empty = keep existing.
+	// When provided it must contain a valid event_on_candle block.
+	LogicJSON json.RawMessage
+	// Status is the desired new status (Draft|Valid). Empty string = keep existing.
+	Status string
+}
+
+// UpdateStrategy implements PUT /strategies/{id} (WBS 2.3.4,
+// api.yaml §PUT /strategies/{id}, SRS FR-DESIGN-11).
+//
+// Business rules:
+//  1. Validate logic_json when provided — must contain an event_on_candle block.
+//  2. Delegate to repo.Update (atomic: lock → nextVersion → UPDATE → INSERT version).
+//  3. Map nil result to ErrStrategyNotFound (ownership check at DB layer).
+//  4. Append warning when Running bots reference this strategy (non-blocking).
+//
+// Return patterns:
+//   - (*StrategyUpdated, nil)       — success.
+//   - (nil, ErrStrategyNotFound)    — strategy not found or not owned → 404.
+//   - (nil, ErrMissingEventTrigger) — no event_on_candle block → 400.
+//   - (nil, ErrInvalidJSONStructure)— malformed logic_json → 400.
+//   - (nil, other)                  — unexpected server error → 500.
+func (l *StrategyLogic) UpdateStrategy(ctx context.Context, userID, strategyID string, input UpdateStrategyInput) (*domain.StrategyUpdated, error) {
+	// Validate logic_json if provided.
+	if len(input.LogicJSON) > 0 {
+		found, err := hasEventTriggerBlock(input.LogicJSON)
+		if err != nil {
+			return nil, ErrInvalidJSONStructure
+		}
+		if !found {
+			return nil, ErrMissingEventTrigger
+		}
+	}
+
+	// Normalise status — only Draft/Valid are allowed; anything else is cleared
+	// so the repository carries forward the current DB value.
+	if input.Status != domain.StrategyStatusDraft && input.Status != domain.StrategyStatusValid {
+		input.Status = ""
+	}
+
+	result, err := l.repo.Update(ctx, strategyID, userID,
+		strings.TrimSpace(input.Name),
+		input.Status,
+		[]byte(input.LogicJSON),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, ErrStrategyNotFound
+	}
+
+	// Check for Running bots and attach warning (non-blocking).
+	// FindByID is cheap: it only does two indexed queries and carries the
+	// active_bot_ids already built by the repository (WBS 2.3.3 reuse).
+	if detail, ferr := l.repo.FindByID(ctx, strategyID, userID); ferr == nil && detail != nil && len(detail.ActiveBotIDs) > 0 {
+		msg := "This strategy is being used by running Bot(s). Any changes will only apply to new runs."
+		result.Warning = &msg
+	}
+
+	return result, nil
+}

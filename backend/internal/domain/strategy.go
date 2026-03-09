@@ -81,3 +81,15 @@ type StrategyDetail struct {
 	CreatedAt    time.Time       `json:"created_at"`
 	UpdatedAt    time.Time       `json:"updated_at"`
 }
+
+// StrategyUpdated is the response DTO returned by PUT /strategies/{id} on 200 OK.
+// Warning is omitted when no Running bots reference this strategy
+// (WBS 2.3.4, api.yaml §StrategyUpdated).
+type StrategyUpdated struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Version   int       `json:"version"`
+	Status    string    `json:"status"`
+	Warning   *string   `json:"warning,omitempty"`
+	UpdatedAt time.Time `json:"updated_at"`
+}

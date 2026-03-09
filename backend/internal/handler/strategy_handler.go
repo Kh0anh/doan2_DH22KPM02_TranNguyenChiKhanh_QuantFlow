@@ -178,3 +178,69 @@ func (h *StrategyHandler) Get(w http.ResponseWriter, r *http.Request) {
 		"data": detail,
 	})
 }
+
+// updateStrategyRequest is the JSON body expected by PUT /strategies/{id}.
+// All fields are optional — omitted fields retain their current values.
+// logic_json is kept as json.RawMessage to avoid double-serialisation.
+type updateStrategyRequest struct {
+	Name      string          `json:"name"`
+	LogicJSON json.RawMessage `json:"logic_json"`
+	Status    string          `json:"status"`
+}
+
+// Update handles PUT /api/v1/strategies/{id}.
+//
+// Flow (WBS 2.3.4, api.yaml §PUT /strategies/{id}):
+//  1. Extract JWT claims from context.
+//  2. Read {id} path parameter.
+//  3. Decode JSON body (all fields optional).
+//  4. Delegate to StrategyLogic.UpdateStrategy — validates logic_json when
+//     provided, atomically bumps version_number, updates strategy metadata.
+//  5. Return 200 { message, data: StrategyUpdated }.
+//     If Running bots exist, data.warning is populated automatically.
+//
+// Success              → 200  { message, data: StrategyUpdated }
+// Missing event block  → 400  MISSING_EVENT_TRIGGER
+// Malformed JSON       → 400  INVALID_JSON_STRUCTURE
+// Not found / no owner → 404  STRATEGY_NOT_FOUND
+// Auth ✗               → 401  UNAUTHORIZED
+// Server ✗             → 500  INTERNAL_ERROR
+func (h *StrategyHandler) Update(w http.ResponseWriter, r *http.Request) {
+	claims, ok := appMiddleware.ClaimsFromContext(r.Context())
+	if !ok {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "No active session.")
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+
+	var req updateStrategyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "INVALID_JSON_STRUCTURE", "Invalid JSON structure. Please check the request body format.")
+		return
+	}
+
+	updated, err := h.strategyLogic.UpdateStrategy(r.Context(), claims.UserID, id, logic.UpdateStrategyInput{
+		Name:      req.Name,
+		LogicJSON: req.LogicJSON,
+		Status:    req.Status,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, logic.ErrStrategyNotFound):
+			response.Error(w, http.StatusNotFound, "STRATEGY_NOT_FOUND", "Strategy not found.")
+		case errors.Is(err, logic.ErrMissingEventTrigger):
+			response.Error(w, http.StatusBadRequest, "MISSING_EVENT_TRIGGER", "Strategy must contain an Event Trigger block.")
+		case errors.Is(err, logic.ErrInvalidJSONStructure):
+			response.Error(w, http.StatusBadRequest, "INVALID_JSON_STRUCTURE", "Invalid JSON structure. Please check the request body format.")
+		default:
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "An internal error occurred. Please try again later.")
+		}
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"message": "Strategy updated successfully.",
+		"data":    updated,
+	})
+}

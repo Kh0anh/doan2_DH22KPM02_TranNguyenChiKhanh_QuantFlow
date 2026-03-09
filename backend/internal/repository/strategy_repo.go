@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/kh0anh/quantflow/internal/domain"
 	"gorm.io/gorm"
@@ -29,6 +30,16 @@ type StrategyRepository interface {
 	// including its latest logic_json and the IDs of any Running bot_instances.
 	// Returns (nil, nil) when the strategy does not exist or belongs to another user.
 	FindByID(ctx context.Context, strategyID, userID string) (*domain.StrategyDetail, error)
+
+	// Update atomically updates strategy metadata and snapshots a new version row.
+	// Inside a single transaction:
+	//   1. SELECT FOR UPDATE verifies ownership and locks the row.
+	//   2. Computes nextVersion = MAX(version_number) + 1.
+	//   3. Carries forward the latest logic_json when logicJSON is nil/empty.
+	//   4. UPDATEs strategies.name / strategies.status.
+	//   5. INSERTs a new strategy_versions row.
+	// Returns (nil, nil) when strategyID does not exist or belongs to another user.
+	Update(ctx context.Context, strategyID, userID, name, status string, logicJSON []byte) (*domain.StrategyUpdated, error)
 }
 
 type strategyRepository struct {
@@ -185,4 +196,133 @@ func (r *strategyRepository) FindByID(ctx context.Context, strategyID, userID st
 	}
 
 	return &detail, nil
+}
+
+// Update atomically updates strategy metadata and appends a new snapshot version.
+//
+// Transaction sequence:
+//  1. SELECT id, name, status FROM strategies WHERE id=? AND user_id=? FOR UPDATE
+//     — verifies ownership and takes a row-level lock.
+//  2. SELECT COALESCE(MAX(version_number),0)+1 FROM strategy_versions — next ver.
+//  3. If logicJSON is empty, carry forward the latest logic_json from DB.
+//  4. UPDATE strategies SET name=?, status=?, updated_at=NOW().
+//  5. INSERT INTO strategy_versions (version_number=nextVer, logic_json=?, status=?).
+//
+// Returns (nil, nil) when the strategy does not exist or belongs to another user.
+func (r *strategyRepository) Update(
+	ctx context.Context,
+	strategyID, userID, name, status string,
+	logicJSON []byte,
+) (*domain.StrategyUpdated, error) {
+	var result *domain.StrategyUpdated
+
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Step 1: Verify ownership with row lock.
+		var current struct {
+			ID     string `gorm:"column:id"`
+			Name   string `gorm:"column:name"`
+			Status string `gorm:"column:status"`
+		}
+		res := tx.Raw(
+			"SELECT id, name, status FROM strategies WHERE id = ? AND user_id = ? FOR UPDATE",
+			strategyID, userID,
+		).Scan(&current)
+		if res.Error != nil {
+			return fmt.Errorf("strategy_repo: Update: lock: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			// Not found or wrong owner — signal to caller via nil result.
+			return nil
+		}
+
+		// Apply field defaults: keep existing values when caller omits them.
+		if name == "" {
+			name = current.Name
+		}
+		if status == "" {
+			status = current.Status
+		}
+
+		// Step 2: Compute next version number.
+		var nextVersion int
+		if err := tx.Raw(
+			"SELECT COALESCE(MAX(version_number), 0) + 1 FROM strategy_versions WHERE strategy_id = ?",
+			strategyID,
+		).Scan(&nextVersion).Error; err != nil {
+			return fmt.Errorf("strategy_repo: Update: next version: %w", err)
+		}
+
+		// Step 3: Carry forward existing logic_json when none was provided.
+		if len(logicJSON) == 0 {
+			var existing []byte
+			if err := tx.Raw(
+				"SELECT logic_json FROM strategy_versions WHERE strategy_id = ? ORDER BY version_number DESC LIMIT 1",
+				strategyID,
+			).Scan(&existing).Error; err != nil {
+				return fmt.Errorf("strategy_repo: Update: fetch logic_json: %w", err)
+			}
+			logicJSON = existing
+		}
+
+		// Step 4: Update strategy metadata (updated_at auto-set by GORM autoUpdateTime).
+		if err := tx.Exec(
+			"UPDATE strategies SET name = ?, status = ?, updated_at = NOW() WHERE id = ?",
+			name, status, strategyID,
+		).Error; err != nil {
+			return fmt.Errorf("strategy_repo: Update: update strategy: %w", err)
+		}
+
+		// Step 5: Insert new version snapshot.
+		newVersion := &domain.StrategyVersion{
+			StrategyID:    strategyID,
+			VersionNumber: nextVersion,
+			LogicJSON:     logicJSON,
+			Status:        status,
+		}
+		if err := tx.Create(newVersion).Error; err != nil {
+			return fmt.Errorf("strategy_repo: Update: insert version: %w", err)
+		}
+
+		// Fetch updated_at from DB to return the server-assigned timestamp.
+		var updatedAt struct {
+			UpdatedAt string `gorm:"column:updated_at"`
+		}
+		_ = tx.Raw("SELECT updated_at FROM strategies WHERE id = ?", strategyID).Scan(&updatedAt)
+
+		result = &domain.StrategyUpdated{
+			ID:      strategyID,
+			Name:    name,
+			Version: nextVersion,
+			Status:  status,
+		}
+		// Parse updated_at — fall back to zero value on parse error (non-fatal).
+		if t, err := parseUpdatedAt(updatedAt.UpdatedAt); err == nil {
+			result.UpdatedAt = t
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// parseUpdatedAt parses the PostgreSQL timestamptz string returned by a raw scan.
+// Tries RFC3339Nano first, then the common Postgres layout.
+func parseUpdatedAt(s string) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, fmt.Errorf("empty")
+	}
+	layouts := []string{
+		time.RFC3339Nano,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02T15:04:05Z07:00",
+	}
+	for _, l := range layouts {
+		if t, err := time.Parse(l, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("cannot parse %q as timestamp", s)
 }
