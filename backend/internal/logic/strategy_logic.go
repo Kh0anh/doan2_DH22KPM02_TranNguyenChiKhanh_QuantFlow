@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/kh0anh/quantflow/internal/domain"
 	"github.com/kh0anh/quantflow/internal/repository"
@@ -468,5 +469,34 @@ func (l *StrategyLogic) ImportStrategy(ctx context.Context, userID string, input
 		Version:   1,
 		Status:    strategy.Status,
 		CreatedAt: strategy.CreatedAt,
+	}, nil
+}
+
+// ExportStrategy implements GET /strategies/{id}/export (WBS 2.3.7,
+// api.yaml §GET /strategies/{id}/export, SRS FR-DESIGN-12).
+//
+// Business rules:
+//  1. Fetch strategy detail via repo.FindByID (reused — returns latest logic_json).
+//  2. Map StrategyDetail → domain.StrategyExport.
+//  3. Set ExportedAt = time.Now().UTC() at call time (not a DB field).
+//
+// Return patterns:
+//   - (*StrategyExport, nil)      — success → HTTP 200 with Content-Disposition header.
+//   - (nil, ErrStrategyNotFound)  — not found or not owned → HTTP 404.
+//   - (nil, other)                — unexpected server error → HTTP 500.
+func (l *StrategyLogic) ExportStrategy(ctx context.Context, userID, strategyID string) (*domain.StrategyExport, error) {
+	detail, err := l.repo.FindByID(ctx, strategyID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil {
+		return nil, ErrStrategyNotFound
+	}
+
+	return &domain.StrategyExport{
+		Name:       detail.Name,
+		LogicJSON:  detail.LogicJSON,
+		Version:    detail.Version,
+		ExportedAt: time.Now().UTC(),
 	}, nil
 }

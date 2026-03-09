@@ -93,3 +93,13 @@ type StrategyUpdated struct {
 	Warning   *string   `json:"warning,omitempty"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// StrategyExport is the response DTO returned by GET /strategies/{id}/export.
+// Carried with a Content-Disposition: attachment header so the browser triggers
+// a file download (api.yaml §StrategyExport, SRS FR-DESIGN-12, WBS 2.3.7).
+type StrategyExport struct {
+	Name       string          `json:"name"`
+	LogicJSON  json.RawMessage `json:"logic_json"`
+	Version    int             `json:"version"`
+	ExportedAt time.Time       `json:"exported_at"`
+}

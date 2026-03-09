@@ -3,7 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -347,4 +349,56 @@ func (h *StrategyHandler) Import(w http.ResponseWriter, r *http.Request) {
 		"message": "Strategy imported successfully.",
 		"data":    created,
 	})
+}
+
+// slugNonAlnum matches any character that is not a lowercase letter, digit, or hyphen.
+// Compiled once at package level to avoid repeated compilation.
+var slugNonAlnum = regexp.MustCompile(`[^a-z0-9-]+`)
+
+// slugifyFilename converts a strategy name into a safe filename base.
+// Example: "EMA Crossover Strategy" -> "ema-crossover-strategy"
+func slugifyFilename(name string) string {
+	s := strings.ToLower(name)
+	s = slugNonAlnum.ReplaceAllString(s, "-")
+	s = strings.Trim(s, "-")
+	if s == "" {
+		s = "strategy"
+	}
+	return s + ".json"
+}
+
+// Export handles GET /api/v1/strategies/{id}/export.
+//
+// Flow (WBS 2.3.7, api.yaml §GET /strategies/{id}/export, SRS FR-DESIGN-12):
+//  1. Extract JWT claims from context.
+//  2. Read {id} path parameter.
+//  3. Delegate to StrategyLogic.ExportStrategy.
+//  4. Write Content-Disposition header with slugified filename.
+//  5. Return 200 with StrategyExport JSON body.
+//
+// Success       → 200  Content-Disposition: attachment; filename="<slug>.json"
+// Not found     → 404  STRATEGY_NOT_FOUND
+// Auth ✗         → 401  UNAUTHORIZED
+// Server ✗       → 500  INTERNAL_ERROR
+func (h *StrategyHandler) Export(w http.ResponseWriter, r *http.Request) {
+	claims, ok := appMiddleware.ClaimsFromContext(r.Context())
+	if !ok {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "No active session.")
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+
+	export, err := h.strategyLogic.ExportStrategy(r.Context(), claims.UserID, id)
+	if err != nil {
+		if errors.Is(err, logic.ErrStrategyNotFound) {
+			response.Error(w, http.StatusNotFound, "STRATEGY_NOT_FOUND", "Strategy not found.")
+		} else {
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "An internal error occurred. Please try again later.")
+		}
+		return
+	}
+
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, slugifyFilename(export.Name)))
+	response.JSON(w, http.StatusOK, export)
 }
