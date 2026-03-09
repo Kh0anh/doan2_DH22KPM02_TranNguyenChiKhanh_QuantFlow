@@ -40,6 +40,14 @@ type StrategyRepository interface {
 	//   5. INSERTs a new strategy_versions row.
 	// Returns (nil, nil) when strategyID does not exist or belongs to another user.
 	Update(ctx context.Context, strategyID, userID, name, status string, logicJSON []byte) (*domain.StrategyUpdated, error)
+
+	// DeleteByID removes a strategy owned by the given user.
+	//
+	// Returns:
+	//   - ([]string, nil) — Running bots found; deletion blocked. Slice contains bot IDs.
+	//   - (nil, ErrNotFound) — strategy not found or not owned by user.
+	//   - (nil, nil) — deletion successful.
+	DeleteByID(ctx context.Context, strategyID, userID string) (activeBotIDs []string, err error)
 }
 
 type strategyRepository struct {
@@ -326,3 +334,46 @@ func parseUpdatedAt(s string) (time.Time, error) {
 	}
 	return time.Time{}, fmt.Errorf("cannot parse %q as timestamp", s)
 }
+
+// DeleteByID removes a strategy owned by the given user.
+//
+//  1. Check for Running bot_instances linked to this strategy — block if found.
+//  2. DELETE FROM strategies WHERE id=? AND user_id=? (CASCADE removes versions).
+//  3. If RowsAffected == 0, strategy was not found or belonged to another user.
+//
+// Return semantics:
+//   - ([]string, nil)  — Running bots exist; deletion blocked. Slice = their IDs.
+//   - (nil, errNotFound) — strategy not found / wrong owner (sentinel via fmt.Errorf).
+//   - (nil, nil)       — deleted successfully.
+func (r *strategyRepository) DeleteByID(ctx context.Context, strategyID, userID string) ([]string, error) {
+	// Step 1: Check for Running bots.
+	var botIDs []string
+	if err := r.db.WithContext(ctx).
+		Table("bot_instances").
+		Select("id").
+		Where("strategy_id = ? AND user_id = ? AND status = 'Running'", strategyID, userID).
+		Pluck("id", &botIDs).Error; err != nil {
+		return nil, fmt.Errorf("strategy_repo: DeleteByID: bot check: %w", err)
+	}
+	if len(botIDs) > 0 {
+		return botIDs, nil
+	}
+
+	// Step 2: DELETE with ownership guard.
+	res := r.db.WithContext(ctx).
+		Exec("DELETE FROM strategies WHERE id = ? AND user_id = ?", strategyID, userID)
+	if res.Error != nil {
+		return nil, fmt.Errorf("strategy_repo: DeleteByID: delete: %w", res.Error)
+	}
+
+	// Step 3: RowsAffected == 0 means not found or wrong owner.
+	if res.RowsAffected == 0 {
+		return nil, errStrategyNotFoundRepo
+	}
+
+	return nil, nil
+}
+
+// errStrategyNotFoundRepo is a package-private sentinel used by DeleteByID
+// to signal "not found" without depending on the logic layer.
+var errStrategyNotFoundRepo = fmt.Errorf("strategy not found")

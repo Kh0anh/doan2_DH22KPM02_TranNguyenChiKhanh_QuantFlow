@@ -244,3 +244,52 @@ func (h *StrategyHandler) Update(w http.ResponseWriter, r *http.Request) {
 		"data":    updated,
 	})
 }
+
+// Delete handles DELETE /api/v1/strategies/{id}.
+//
+// Flow (WBS 2.3.5, api.yaml §DELETE /strategies/{id}):
+//  1. Extract JWT claims from context.
+//  2. Read {id} path parameter.
+//  3. Delegate to StrategyLogic.DeleteStrategy.
+//  4. On Running bots — return 409 with custom body including active_bot_ids.
+//  5. On success — return 200 { message }.
+//
+// Success              → 200  { message }
+// Running bots exist   → 409  STRATEGY_IN_USE  (includes active_bot_ids in error)
+// Not found / no owner → 404  STRATEGY_NOT_FOUND
+// Auth ✗               → 401  UNAUTHORIZED
+// Server ✗             → 500  INTERNAL_ERROR
+func (h *StrategyHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	claims, ok := appMiddleware.ClaimsFromContext(r.Context())
+	if !ok {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "No active session.")
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+
+	botIDs, err := h.strategyLogic.DeleteStrategy(r.Context(), claims.UserID, id)
+	if err != nil {
+		switch {
+		case errors.Is(err, logic.ErrStrategyInUse):
+			// 409 uses a non-standard extended error body per api.yaml
+			// (active_bot_ids nested inside error object).
+			response.JSON(w, http.StatusConflict, map[string]any{
+				"error": map[string]any{
+					"code":           "STRATEGY_IN_USE",
+					"message":        "Strategy is being used by running Bot(s). Please stop all Bots before deleting.",
+					"active_bot_ids": botIDs,
+				},
+			})
+		case errors.Is(err, logic.ErrStrategyNotFound):
+			response.Error(w, http.StatusNotFound, "STRATEGY_NOT_FOUND", "Strategy not found.")
+		default:
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "An internal error occurred. Please try again later.")
+		}
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"message": "Strategy deleted successfully.",
+	})
+}

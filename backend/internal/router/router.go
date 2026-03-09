@@ -88,10 +88,11 @@ func Setup(db *gorm.DB, cfg *config.Config) http.Handler {
 				r.Delete("/api-keys", apiKeyHandler.Delete)
 			})
 
-			// WBS 2.3.1: GET  /strategies (page pagination + ILIKE search) ✓
-			// WBS 2.3.2: POST /strategies (event_on_candle validation + version 1) ✓
-			// WBS 2.3.3: GET  /strategies/{id} (detail + active Bot warning) ✓
-			// WBS 2.3.4: PUT  /strategies/{id} (auto version_number++) ✓
+			// WBS 2.3.1: GET    /strategies (page pagination + ILIKE search) ✓
+			// WBS 2.3.2: POST   /strategies (event_on_candle validation + version 1) ✓
+			// WBS 2.3.3: GET    /strategies/{id} (detail + active Bot warning) ✓
+			// WBS 2.3.4: PUT    /strategies/{id} (auto version_number++) ✓
+			// WBS 2.3.5: DELETE /strategies/{id} (check Running Bot then 409) ✓
 			strategyRepo := repository.NewStrategyRepository(db)
 			strategyLogic := logic.NewStrategyLogic(strategyRepo)
 			strategyHandler := handler.NewStrategyHandler(strategyLogic)
@@ -100,6 +101,7 @@ func Setup(db *gorm.DB, cfg *config.Config) http.Handler {
 				r.Post("/", strategyHandler.Create)
 				r.Get("/{id}", strategyHandler.Get)
 				r.Put("/{id}", strategyHandler.Update)
+				r.Delete("/{id}", strategyHandler.Delete)
 			})
 
 			// TODO(dev): Mount backtest handlers — POST/GET/cancel /backtests (WBS 2.6.5)

@@ -37,6 +37,10 @@ var (
 	// ErrStrategyNotFound is returned when the requested strategy does not exist
 	// or does not belong to the authenticated user. Handler maps this to 404.
 	ErrStrategyNotFound = errors.New("strategy not found")
+
+	// ErrStrategyInUse is returned when DELETE is attempted but Running bots
+	// reference the strategy. Handler maps this to 409 STRATEGY_IN_USE.
+	ErrStrategyInUse = errors.New("strategy is in use by running bots")
 )
 
 // ListStrategiesInput carries the validated query parameters for list strategies.
@@ -365,4 +369,33 @@ func (l *StrategyLogic) UpdateStrategy(ctx context.Context, userID, strategyID s
 	}
 
 	return result, nil
+}
+
+// DeleteStrategy implements DELETE /strategies/{id} (WBS 2.3.5,
+// api.yaml §DELETE /strategies/{id}, SRS FR-DESIGN-11).
+//
+// Business rules:
+//  1. Check for Running bot_instances linked to strategy — block with 409 if found.
+//  2. Delete strategy (CASCADE removes strategy_versions rows).
+//  3. 404 when strategy does not exist or belongs to another user.
+//
+// Return patterns:
+//   - (nil, nil)                    — deleted successfully → HTTP 200.
+//   - (activeBotIDs, ErrStrategyInUse) — Running bots block deletion → HTTP 409.
+//   - (nil, ErrStrategyNotFound)    — not found or not owned → HTTP 404.
+//   - (nil, other)                  — unexpected server error → HTTP 500.
+func (l *StrategyLogic) DeleteStrategy(ctx context.Context, userID, strategyID string) ([]string, error) {
+	botIDs, err := l.repo.DeleteByID(ctx, strategyID, userID)
+	if err != nil {
+		// DeleteByID returns errStrategyNotFoundRepo (unexported) — match by message
+		// to avoid coupling the logic layer to a repo-internal sentinel.
+		if err.Error() == "strategy not found" {
+			return nil, ErrStrategyNotFound
+		}
+		return nil, err
+	}
+	if len(botIDs) > 0 {
+		return botIDs, ErrStrategyInUse
+	}
+	return nil, nil
 }
