@@ -244,6 +244,22 @@ func (s *KlineSyncService) runKlineStream(ctx context.Context, symbol, interval 
 // Candle builders
 // ---------------------------------------------------------------------------
 
+// StartWatchedSymbols subscribes to the 1-minute kline stream for every
+// symbol in the provided list. It is called once on server startup, driven
+// by the WATCHED_SYMBOLS environment variable (WBS 2.4.1).
+//
+// Each subscription is non-blocking — the underlying goroutine runs until
+// ctx is cancelled (SIGTERM graceful shutdown) or Unsubscribe is called.
+// Errors from individual subscriptions are logged but do not abort the loop
+// so that one bad symbol never prevents the rest from being monitored.
+func (s *KlineSyncService) StartWatchedSymbols(ctx context.Context, symbols []string) {
+	for _, sym := range symbols {
+		if err := s.Subscribe(ctx, sym, "1m"); err != nil {
+			log.Printf("kline_sync: StartWatchedSymbols: subscribe(%s): %v", sym, err)
+		}
+	}
+}
+
 // buildCandleFromWS constructs a domain.Candle from a fully-closed
 // WsKlineEvent (IsFinal == true). All price/volume fields are strings —
 // stored as-is to preserve Binance's decimal precision (SRS FR-DESIGN-06).

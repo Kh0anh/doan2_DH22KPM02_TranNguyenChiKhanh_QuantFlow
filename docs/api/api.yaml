@@ -1741,6 +1741,11 @@ paths:
         Lấy danh sách các cặp tiền mã hóa hỗ trợ giao dịch trên hệ thống. Mỗi symbol
         kèm theo giá hiện tại, phần trăm thay đổi 24h và khối lượng giao dịch 24h.
 
+        **Nguồn dữ liệu:** Danh sách symbols được giới hạn bởi biến môi trường
+        `WATCHED_SYMBOLS` trong cấu hình Backend (WBS 2.4.1). Chỉ những symbols
+        được khai báo trong `WATCHED_SYMBOLS` mới có Kline WebSocket stream hoạt động
+        và được trả về bởi endpoint này. Mặc định: `BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT`.
+
         Hỗ trợ tìm kiếm cặp tiền theo từ khóa (VD: `BTC`).
 
         Dữ liệu giá biến động được Backend nhận từ sàn Binance và cung cấp cho Frontend.

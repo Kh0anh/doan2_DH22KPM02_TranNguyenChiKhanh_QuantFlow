@@ -28,6 +28,11 @@ type Config struct {
 
 	// CORS
 	CORSAllowedOrigins []string
+
+	// Market Watch — comma-separated list of Binance Futures symbol pairs
+	// the backend subscribes to on startup (WBS 2.4.1).
+	// Example: BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT
+	WatchedSymbols []string
 }
 
 // Load reads configuration from environment variables.
@@ -56,6 +61,9 @@ func Load() *Config {
 
 	rawOrigins := getEnv("CORS_ALLOWED_ORIGINS", "http://localhost,http://localhost:3000")
 	cfg.CORSAllowedOrigins = splitTrim(rawOrigins, ",")
+
+	rawSymbols := getEnv("WATCHED_SYMBOLS", "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT")
+	cfg.WatchedSymbols = splitTrim(rawSymbols, ",")
 
 	// Guard: secrets must not be empty in non-development environments
 	if cfg.GoEnv != "development" {

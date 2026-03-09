@@ -24,7 +24,13 @@ func main() {
 		log.Fatalf("[server] Database connection failed: %v", err)
 	}
 
-	handler := router.Setup(db, cfg)
+	// Listen for OS signal before wiring the router so that the server-lifetime
+	// context is available for long-running background workers (e.g. kline WS
+	// streams started by StartWatchedSymbols — WBS 2.4.1).
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	handler := router.Setup(ctx, db, cfg)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.ServerPort,
@@ -33,10 +39,6 @@ func main() {
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
-
-	// Listen for OS signal (SIGINT / SIGTERM from Docker stop)
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	// Start server in a goroutine so the main goroutine can wait for signal
 	go func() {
