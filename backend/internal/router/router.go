@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -20,7 +21,7 @@ import (
 // Setup constructs and returns the root HTTP handler with all middleware and
 // route groups registered. Each route group is stubbed with a TODO comment
 // referencing the WBS task that will implement it (Phase 2 tasks).
-func Setup(db *gorm.DB, cfg *config.Config) http.Handler {
+func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(chiMiddleware.Logger)
@@ -113,7 +114,8 @@ func Setup(db *gorm.DB, cfg *config.Config) http.Handler {
 			// into MarketLogic (WBS 2.4.3-2.4.4) and BacktestLogic (WBS 2.6.1).
 			candleRepo := repository.NewCandleRepository(db)
 			klineSyncSvc := exchange.NewKlineSyncService(candleRepo, exchangeLimiter)
-			_ = klineSyncSvc // consumed by market_logic (WBS 2.4.3) and bot engine (WBS 2.7.2)
+			// WBS 2.4.1: subscribe to all watched symbols from WATCHED_SYMBOLS env on startup.
+			go klineSyncSvc.StartWatchedSymbols(ctx, cfg.WatchedSymbols)
 
 			// TODO(dev): Mount backtest handlers — POST/GET/cancel /backtests (WBS 2.6.5)
 			r.Route("/backtests", func(r chi.Router) {

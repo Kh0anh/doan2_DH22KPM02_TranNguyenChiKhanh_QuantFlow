@@ -3,7 +3,7 @@ package exchange
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -85,7 +85,7 @@ func (s *KlineSyncService) Subscribe(ctx context.Context, symbol, interval strin
 	if err := s.seedLatestCandle(ctx, symbol, interval); err != nil {
 		// Non-fatal: log and continue. The WS stream will still provide data.
 		// A missing seed only means the very first candle may appear with a gap.
-		log.Printf("kline_sync: seedLatestCandle(%s, %s): %v", symbol, interval, err)
+		slog.Warn("kline_sync: seedLatestCandle failed", "symbol", symbol, "interval", interval, "error", err)
 	}
 
 	// --- Step 2: Start the WS stream goroutine ----------------------------------
@@ -207,7 +207,7 @@ func (s *KlineSyncService) runKlineStream(ctx context.Context, symbol, interval 
 		if err := s.candleRepo.InsertOne(ctx, candle); err != nil {
 			// Log and continue — a failed insert does not stop the stream.
 			// The GapFillerWorker (WBS 2.4.2) will recover any missing rows.
-			log.Printf("kline_sync: runKlineStream(%s, %s): InsertOne: %v", symbol, interval, err)
+			slog.Warn("kline_sync: InsertOne failed", "symbol", symbol, "interval", interval, "error", err)
 		}
 	}
 
@@ -215,12 +215,12 @@ func (s *KlineSyncService) runKlineStream(ctx context.Context, symbol, interval 
 		// Log WS protocol errors. The go-binance SDK internally reconnects on
 		// transient failures; persistent errors will surface here and are logged
 		// to preserve observability without crashing the goroutine.
-		log.Printf("kline_sync: runKlineStream(%s, %s): WS error: %v", symbol, interval, err)
+		slog.Warn("kline_sync: WS error", "symbol", symbol, "interval", interval, "error", err)
 	}
 
 	doneC, sdkStopC, err := futures.WsKlineServe(symbol, interval, wsHandler, errHandler)
 	if err != nil {
-		log.Printf("kline_sync: runKlineStream(%s, %s): WsKlineServe failed: %v", symbol, interval, err)
+		slog.Error("kline_sync: WsKlineServe failed", "symbol", symbol, "interval", interval, "error", err)
 		return
 	}
 
@@ -236,13 +236,29 @@ func (s *KlineSyncService) runKlineStream(ctx context.Context, symbol, interval 
 	case <-doneC:
 		// SDK closed the connection on its own (e.g. Binance server-side close).
 		// Log for observability; the stream is no longer active.
-		log.Printf("kline_sync: runKlineStream(%s, %s): WS stream closed by remote", symbol, interval)
+		slog.Info("kline_sync: WS stream closed by remote", "symbol", symbol, "interval", interval)
 	}
 }
 
 // ---------------------------------------------------------------------------
 // Candle builders
 // ---------------------------------------------------------------------------
+
+// StartWatchedSymbols subscribes to the 1-minute kline stream for every
+// symbol in the provided list. It is called once on server startup, driven
+// by the WATCHED_SYMBOLS environment variable (WBS 2.4.1).
+//
+// Each subscription is non-blocking — the underlying goroutine runs until
+// ctx is cancelled (SIGTERM graceful shutdown) or Unsubscribe is called.
+// Errors from individual subscriptions are logged but do not abort the loop
+// so that one bad symbol never prevents the rest from being monitored.
+func (s *KlineSyncService) StartWatchedSymbols(ctx context.Context, symbols []string) {
+	for _, sym := range symbols {
+		if err := s.Subscribe(ctx, sym, "1m"); err != nil {
+			slog.Error("kline_sync: subscribe failed", "symbol", sym, "error", err)
+		}
+	}
+}
 
 // buildCandleFromWS constructs a domain.Candle from a fully-closed
 // WsKlineEvent (IsFinal == true). All price/volume fields are strings —
