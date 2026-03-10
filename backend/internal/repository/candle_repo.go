@@ -53,6 +53,19 @@ type CandleRepository interface {
 	//   - end    — inclusive upper bound on open_time; nil = no upper bound.
 	//   - limit  — maximum number of rows to return (1–1500).
 	QueryCandles(ctx context.Context, symbol, interval string, start, end *time.Time, limit int) ([]domain.Candle, error)
+
+	// QueryLatestClosedCandles returns the most recent `limit` fully-closed
+	// candles for the given (symbol, interval) pair, ordered by open_time ASC.
+	//
+	// This is the dedicated read path for context-aware indicator blocks
+	// (indicator_rsi, indicator_ema — Task 2.5.5, SRS FR-DESIGN-07). Indicators
+	// require the newest N closed candles, not an arbitrary range from the
+	// beginning of history. Only candles with is_closed = true are included,
+	// preventing partially-formed price data from skewing calculations.
+	//
+	// Implementation: queries DESC (newest first), limits to N rows, then
+	// reverses in Go to return ASC order suitable for rolling calculation loops.
+	QueryLatestClosedCandles(ctx context.Context, symbol, interval string, limit int) ([]domain.Candle, error)
 }
 
 type candleRepository struct {
@@ -161,6 +174,42 @@ func (r *candleRepository) QueryCandles(
 		Find(&candles).Error
 	if err != nil {
 		return nil, fmt.Errorf("candle_repo: QueryCandles(%s, %s): %w", symbol, interval, err)
+	}
+	return candles, nil
+}
+
+// QueryLatestClosedCandles retrieves the most recent `limit` fully-closed
+// candles for (symbol, interval), ordered by open_time ASC.
+//
+// This is the dedicated read path for context-aware indicator blocks
+// (Task 2.5.5 — indicator_rsi, indicator_ema). Indicator algorithms require
+// the NEWEST N closed candles (not the oldest), so this method queries
+// ORDER BY open_time DESC first to select the latest rows, then reverses
+// the slice in Go to return chronological (ASC) order suitable for rolling
+// RSI/EMA computation loops.
+//
+// Only candles with is_closed = true are returned — partially-formed candles
+// (is_closed = false) would skew indicator values and must be excluded.
+// In practice the WS stream only persists closed candles (WBS 2.8.2), so
+// the is_closed filter is a defensive correctness guarantee.
+func (r *candleRepository) QueryLatestClosedCandles(
+	ctx context.Context,
+	symbol, interval string,
+	limit int,
+) ([]domain.Candle, error) {
+	var candles []domain.Candle
+	err := r.db.WithContext(ctx).
+		Where("symbol = ? AND interval = ? AND is_closed = true", symbol, interval).
+		Order("open_time DESC").
+		Limit(limit).
+		Find(&candles).Error
+	if err != nil {
+		return nil, fmt.Errorf("candle_repo: QueryLatestClosedCandles(%s, %s, %d): %w",
+			symbol, interval, limit, err)
+	}
+	// Reverse to chronological (ASC) order for indicator rolling calculations.
+	for i, j := 0, len(candles)-1; i < j; i, j = i+1, j-1 {
+		candles[i], candles[j] = candles[j], candles[i]
 	}
 	return candles, nil
 }

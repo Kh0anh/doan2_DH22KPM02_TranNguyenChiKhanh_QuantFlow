@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+
+	"github.com/kh0anh/quantflow/internal/domain"
 )
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -71,6 +73,25 @@ func NoOpUnitTracker() UnitCostTracker {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  Candle Repository Reader Interface (for indicator blocks)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// CandleRepositoryReader is the minimal read interface consumed by
+// context-aware indicator blocks (indicator_rsi, indicator_ema — Task 2.5.5).
+//
+// Defined here in the blockly package to avoid an import cycle:
+// engine/blockly must not depend on internal/repository directly (that layer
+// depends on domain and GORM, creating unnecessary coupling to infrastructure).
+// The concrete implementation in repository.CandleRepository satisfies this
+// interface via Go's implicit structural typing — no adapter needed.
+type CandleRepositoryReader interface {
+	// QueryLatestClosedCandles returns the most recent `limit` fully-closed
+	// candles for the given (symbol, interval) pair, ordered by open_time ASC.
+	// Only candles with is_closed = true are included.
+	QueryLatestClosedCandles(ctx context.Context, symbol, interval string, limit int) ([]domain.Candle, error)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  Execution Context
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -122,6 +143,18 @@ type ExecutionContext struct {
 	// fields (e.g., bot_id or backtest_id). All block-level log calls go
 	// through this logger so log lines are traceable to their originating bot.
 	Logger *slog.Logger
+
+	// CandleRepo provides read access to the candles_data table for
+	// context-aware indicator blocks (indicator_rsi, indicator_ema — Task 2.5.5,
+	// SRS FR-DESIGN-07). The Bot engine (Task 2.7.1) and Backtest simulator
+	// (Task 2.6.1) inject this after calling NewExecutionContext:
+	//
+	//   execCtx := blockly.NewExecutionContext(ctx, symbol, logger)
+	//   execCtx.CandleRepo = candleRepo
+	//
+	// Indicator blocks return decimal.Zero + log a warning when CandleRepo is
+	// nil (e.g., in unit-test contexts that do not exercise indicator blocks).
+	CandleRepo CandleRepositoryReader
 }
 
 // NewExecutionContext constructs a fresh ExecutionContext for a new Session.
