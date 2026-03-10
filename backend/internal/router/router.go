@@ -117,6 +117,13 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 			// WBS 2.4.1: subscribe to all watched symbols from WATCHED_SYMBOLS env on startup.
 			go klineSyncSvc.StartWatchedSymbols(ctx, cfg.WatchedSymbols)
 
+			// WBS 2.4.2: background worker that periodically detects and backfills
+			// missing candle ranges caused by WS disconnections or server restarts.
+			// Shares the same CandleRepository and ExchangeRateLimiter to ensure
+			// idempotent inserts and respect the Binance IP weight cap.
+			gapFiller := exchange.NewGapFillerWorker(candleRepo, exchangeLimiter, cfg.WatchedSymbols)
+			go gapFiller.Run(ctx)
+
 			// TODO(dev): Mount backtest handlers — POST/GET/cancel /backtests (WBS 2.6.5)
 			r.Route("/backtests", func(r chi.Router) {
 			})

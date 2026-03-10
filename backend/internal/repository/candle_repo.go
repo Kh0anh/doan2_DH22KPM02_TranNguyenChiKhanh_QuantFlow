@@ -28,6 +28,17 @@ type CandleRepository interface {
 	// idempotency — duplicate inserts from concurrent WS events or retry paths
 	// are silently dropped without error (DB Schema §9, SRS FR-CORE-02).
 	InsertOne(ctx context.Context, candle *domain.Candle) error
+
+	// InsertBatch persists multiple candles in a single transaction using GORM
+	// CreateInBatches (1000 rows per batch) with ON CONFLICT DO NOTHING.
+	//
+	// This is the primary write path for the GapFillerWorker (WBS 2.4.2) which
+	// fetches missing candle ranges from Binance REST and bulk-inserts them.
+	// The batch size of 1000 balances PostgreSQL round-trip overhead against
+	// per-statement parameter limits. Duplicate candles that already exist
+	// (e.g., inserted by the WS stream between gap detection and fill) are
+	// silently skipped via the UNIQUE constraint on (symbol, interval, open_time).
+	InsertBatch(ctx context.Context, candles []domain.Candle) error
 }
 
 type candleRepository struct {
@@ -78,6 +89,30 @@ func (r *candleRepository) InsertOne(ctx context.Context, candle *domain.Candle)
 	if err != nil {
 		return fmt.Errorf("candle_repo: InsertOne(%s, %s, %v): %w",
 			candle.Symbol, candle.Interval, candle.OpenTime, err)
+	}
+	return nil
+}
+
+// InsertBatch performs a bulk insert of candles using GORM CreateInBatches
+// with a batch size of 1000 rows and PostgreSQL ON CONFLICT DO NOTHING.
+//
+// The 1000-row batch size is chosen to stay well within PostgreSQL's default
+// max_parameters limit (65535) while minimising round-trip overhead for the
+// GapFillerWorker's large backfill payloads (WBS 2.4.2). Each batch is
+// committed in a single INSERT statement — partial failures within a batch
+// are not possible because ON CONFLICT DO NOTHING handles duplicates at the
+// constraint level, not at the application level.
+const insertBatchSize = 1000
+
+func (r *candleRepository) InsertBatch(ctx context.Context, candles []domain.Candle) error {
+	if len(candles) == 0 {
+		return nil
+	}
+	err := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{DoNothing: true}).
+		CreateInBatches(&candles, insertBatchSize).Error
+	if err != nil {
+		return fmt.Errorf("candle_repo: InsertBatch(%d candles): %w", len(candles), err)
 	}
 	return nil
 }
