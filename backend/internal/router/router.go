@@ -132,8 +132,12 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 			r.Route("/bots", func(r chi.Router) {
 			})
 
-			// TODO(dev): Mount market data handlers — GET /market/symbols, GET /market/candles (WBS 2.4.3-2.4.4)
+			// WBS 2.4.3: GET /market/symbols (24hr ticker — list + price + volume) ✓
+			// TODO(dev): GET /market/candles (WBS 2.4.4)
+			marketLogic := logic.NewMarketLogic(exchangeLimiter)
+			marketHandler := handler.NewMarketHandler(marketLogic, cfg.WatchedSymbols)
 			r.Route("/market", func(r chi.Router) {
+				r.Get("/symbols", marketHandler.ListSymbols)
 			})
 
 			// TODO(dev): Mount trade history handlers — GET /trades, GET /trades/export (WBS 2.8.5)
