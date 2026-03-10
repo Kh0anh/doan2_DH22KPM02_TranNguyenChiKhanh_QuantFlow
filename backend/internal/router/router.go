@@ -133,11 +133,16 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 			})
 
 			// WBS 2.4.3: GET /market/symbols (24hr ticker — list + price + volume) ✓
-			// TODO(dev): GET /market/candles (WBS 2.4.4)
-			marketLogic := logic.NewMarketLogic(exchangeLimiter)
+			// WBS 2.4.4: GET /market/candles (on-demand sync + trade markers)       ✓
+			marketLogic := logic.NewMarketLogic(
+				exchangeLimiter,
+				candleRepo,
+				repository.NewTradeMarkerRepository(db),
+			)
 			marketHandler := handler.NewMarketHandler(marketLogic, cfg.WatchedSymbols)
 			r.Route("/market", func(r chi.Router) {
 				r.Get("/symbols", marketHandler.ListSymbols)
+				r.Get("/candles", marketHandler.GetCandles)
 			})
 
 			// TODO(dev): Mount trade history handlers — GET /trades, GET /trades/export (WBS 2.8.5)

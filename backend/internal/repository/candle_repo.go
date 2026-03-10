@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/kh0anh/quantflow/internal/domain"
 	"gorm.io/gorm"
@@ -39,6 +40,19 @@ type CandleRepository interface {
 	// (e.g., inserted by the WS stream between gap detection and fill) are
 	// silently skipped via the UNIQUE constraint on (symbol, interval, open_time).
 	InsertBatch(ctx context.Context, candles []domain.Candle) error
+
+	// QueryCandles fetches candles for a (symbol, interval) pair within an
+	// optional time range, ordered by open_time ASC, capped at limit rows.
+	//
+	// This is the primary read path for GET /market/candles (WBS 2.4.4).
+	// The query leverages the composite index idx_candles_symbol_interval_time
+	// on (symbol, interval, open_time DESC) for efficient range scans.
+	//
+	// Parameters:
+	//   - start  — inclusive lower bound on open_time; nil = no lower bound.
+	//   - end    — inclusive upper bound on open_time; nil = no upper bound.
+	//   - limit  — maximum number of rows to return (1–1500).
+	QueryCandles(ctx context.Context, symbol, interval string, start, end *time.Time, limit int) ([]domain.Candle, error)
 }
 
 type candleRepository struct {
@@ -115,4 +129,38 @@ func (r *candleRepository) InsertBatch(ctx context.Context, candles []domain.Can
 		return fmt.Errorf("candle_repo: InsertBatch(%d candles): %w", len(candles), err)
 	}
 	return nil
+}
+
+// QueryCandles retrieves up to limit closed candles for the given (symbol,
+// interval) pair, optionally filtered by a time range, ordered by open_time ASC.
+//
+// The query hits the idx_candles_symbol_interval_time composite index
+// (symbol, interval, open_time DESC). PostgreSQL will use an index scan for the
+// WHERE clause then sort the result set; for typical UI limits (≤1500 rows) this
+// is well within the < 500 ms NFR-PERF target (SRS §3.1).
+func (r *candleRepository) QueryCandles(
+	ctx context.Context,
+	symbol, interval string,
+	start, end *time.Time,
+	limit int,
+) ([]domain.Candle, error) {
+	q := r.db.WithContext(ctx).
+		Where("symbol = ? AND interval = ?", symbol, interval)
+
+	if start != nil {
+		q = q.Where("open_time >= ?", *start)
+	}
+	if end != nil {
+		q = q.Where("open_time <= ?", *end)
+	}
+
+	var candles []domain.Candle
+	err := q.
+		Order("open_time ASC").
+		Limit(limit).
+		Find(&candles).Error
+	if err != nil {
+		return nil, fmt.Errorf("candle_repo: QueryCandles(%s, %s): %w", symbol, interval, err)
+	}
+	return candles, nil
 }

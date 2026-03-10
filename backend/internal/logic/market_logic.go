@@ -3,26 +3,42 @@ package logic
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/adshao/go-binance/v2/futures"
 	"github.com/kh0anh/quantflow/internal/domain"
 	"github.com/kh0anh/quantflow/internal/exchange"
+	"github.com/kh0anh/quantflow/internal/repository"
 )
 
 // MarketLogic implements the business rules for the Market data endpoints
 // (WBS 2.4.3-2.4.4). It fetches live ticker data from Binance Futures public
 // REST API and filters results to the platform's watched symbol set.
 type MarketLogic struct {
-	limiter *exchange.ExchangeRateLimiter
+	limiter    *exchange.ExchangeRateLimiter
+	candleRepo repository.CandleRepository
+	markerRepo repository.TradeMarkerRepository
 }
 
 // NewMarketLogic constructs a MarketLogic.
 //
-// The provided limiter is the singleton ExchangeRateLimiter shared across all
-// Binance REST callers to enforce the global IP weight cap (WBS 2.2.5).
-func NewMarketLogic(limiter *exchange.ExchangeRateLimiter) *MarketLogic {
-	return &MarketLogic{limiter: limiter}
+// Parameters:
+//   - limiter     — singleton ExchangeRateLimiter shared across all Binance REST callers (WBS 2.2.5).
+//   - candleRepo  — candle data access; used for DB-first lookup and on-demand sync (WBS 2.4.4).
+//   - markerRepo  — trade marker access; used to attach bot executions on the chart (WBS 2.4.4).
+func NewMarketLogic(
+	limiter *exchange.ExchangeRateLimiter,
+	candleRepo repository.CandleRepository,
+	markerRepo repository.TradeMarkerRepository,
+) *MarketLogic {
+	return &MarketLogic{
+		limiter:    limiter,
+		candleRepo: candleRepo,
+		markerRepo: markerRepo,
+	}
 }
 
 // ListMarketSymbols returns 24-hour ticker summaries for every symbol in
@@ -90,4 +106,154 @@ func (l *MarketLogic) ListMarketSymbols(
 	}
 
 	return result, nil
+}
+
+// onDemandSyncLimit is the maximum number of candles fetched from Binance REST
+// during a single on-demand sync triggered by GET /market/candles (WBS 2.4.4).
+// Capped at the Binance Futures API maximum per request.
+const onDemandSyncLimit = 1500
+
+// GetCandleChart is the core business logic for GET /market/candles (WBS 2.4.4).
+//
+// It follows a DB-first strategy:
+//  1. Query candles_data for the requested (symbol, interval, range, limit).
+//  2. If the DB returns 0 rows → perform an On-demand Sync: call Binance REST
+//     NewKlinesService, persist the result, then re-query the DB.
+//  3. Query trade markers from trade_history JOIN bot_instances for the same
+//     time window and attach them to the response.
+//
+// Parameters:
+//   - symbol    — Binance Futures pair, e.g. "BTCUSDT".
+//   - interval  — candle timeframe, one of the domain.CandleInterval* constants.
+//   - start,end — optional time range (both nil = use limit-based default).
+//   - limit     — max candles to return (1–1500).
+func (l *MarketLogic) GetCandleChart(
+	ctx context.Context,
+	symbol, interval string,
+	start, end *time.Time,
+	limit int,
+) (*domain.CandleChartData, error) {
+
+	// ── Step 1: DB-first lookup ──────────────────────────────────────────────
+	candles, err := l.candleRepo.QueryCandles(ctx, symbol, interval, start, end, limit)
+	if err != nil {
+		return nil, fmt.Errorf("market_logic: GetCandleChart: QueryCandles: %w", err)
+	}
+
+	// ── Step 2: On-demand Sync when DB has no data ───────────────────────────
+	if len(candles) == 0 {
+		slog.Info("market_logic: on-demand sync triggered",
+			"symbol", symbol,
+			"interval", interval,
+		)
+
+		if err := l.limiter.Wait(ctx); err != nil {
+			return nil, fmt.Errorf("market_logic: GetCandleChart: rate limiter: %w", err)
+		}
+
+		syncLimit := limit
+		if syncLimit < onDemandSyncLimit {
+			syncLimit = onDemandSyncLimit
+		}
+
+		svc := futures.NewClient("", "").NewKlinesService().
+			Symbol(symbol).
+			Interval(interval).
+			Limit(syncLimit)
+
+		if start != nil {
+			svc = svc.StartTime(start.UnixMilli())
+		}
+		if end != nil {
+			svc = svc.EndTime(end.UnixMilli())
+		}
+
+		klines, err := svc.Do(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("market_logic: GetCandleChart: Binance NewKlinesService: %w", err)
+		}
+
+		if len(klines) > 0 {
+			batch := make([]domain.Candle, 0, len(klines))
+			for _, k := range klines {
+				batch = append(batch, domain.Candle{
+					Symbol:     symbol,
+					Interval:   interval,
+					OpenTime:   time.UnixMilli(k.OpenTime).UTC(),
+					OpenPrice:  k.Open,
+					HighPrice:  k.High,
+					LowPrice:   k.Low,
+					ClosePrice: k.Close,
+					Volume:     k.Volume,
+					IsClosed:   true,
+				})
+			}
+			if err := l.candleRepo.InsertBatch(ctx, batch); err != nil {
+				// Non-fatal: log the error but continue — the candles may already
+				// exist (race with GapFiller or WS stream) due to ON CONFLICT DO NOTHING.
+				slog.Warn("market_logic: GetCandleChart: InsertBatch failed",
+					"symbol", symbol, "interval", interval, "error", err)
+			}
+
+			// Re-query from DB so the response reflects what was actually persisted.
+			candles, err = l.candleRepo.QueryCandles(ctx, symbol, interval, start, end, limit)
+			if err != nil {
+				return nil, fmt.Errorf("market_logic: GetCandleChart: re-query after sync: %w", err)
+			}
+		}
+	}
+
+	// ── Step 3: Determine marker time window from candle range ───────────────
+	var markerStart, markerEnd time.Time
+	if len(candles) > 0 {
+		markerStart = candles[0].OpenTime
+		markerEnd = candles[len(candles)-1].OpenTime
+	} else {
+		// No candles available at all (symbol/interval has no data on Binance).
+		markerStart = time.Now().UTC().Add(-24 * time.Hour)
+		markerEnd = time.Now().UTC()
+	}
+
+	// ── Step 4: Fetch trade markers ──────────────────────────────────────────
+	markers, err := l.markerRepo.FindMarkersBySymbolAndTimeRange(ctx, symbol, markerStart, markerEnd)
+	if err != nil {
+		// Non-fatal: render chart without markers rather than failing the
+		// entire request, since trade history tables may not yet be seeded.
+		slog.Warn("market_logic: GetCandleChart: FindMarkersBySymbolAndTimeRange failed",
+			"symbol", symbol, "error", err)
+		markers = []domain.TradeMarker{}
+	}
+
+	// ── Step 5: Build response payload ───────────────────────────────────────
+	candleOHLCV := make([]domain.CandleOHLCV, 0, len(candles))
+	for _, c := range candles {
+		candleOHLCV = append(candleOHLCV, domain.CandleOHLCV{
+			OpenTime: c.OpenTime,
+			Open:     parsePrice(c.OpenPrice),
+			High:     parsePrice(c.HighPrice),
+			Low:      parsePrice(c.LowPrice),
+			Close:    parsePrice(c.ClosePrice),
+			Volume:   parsePrice(c.Volume),
+			IsClosed: c.IsClosed,
+		})
+	}
+
+	if markers == nil {
+		markers = []domain.TradeMarker{}
+	}
+
+	return &domain.CandleChartData{
+		Symbol:    symbol,
+		Timeframe: interval,
+		Candles:   candleOHLCV,
+		Markers:   markers,
+	}, nil
+}
+
+// parsePrice converts a PostgreSQL DECIMAL string (e.g. "64500.12345678") to
+// float64 for JSON serialisation. Returns 0 on parse error — a malformed price
+// is non-fatal and will render at y=0 on the chart rather than crashing.
+func parsePrice(s string) float64 {
+	f, _ := strconv.ParseFloat(s, 64)
+	return f
 }
