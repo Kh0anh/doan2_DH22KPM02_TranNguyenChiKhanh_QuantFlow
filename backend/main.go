@@ -26,7 +26,9 @@ func main() {
 		logger.Fatal("database connection failed", "component", "server", "error", err)
 	}
 
-	handler := router.Setup(db, cfg)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	handler := router.Setup(ctx, db, cfg)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.ServerPort,
@@ -35,9 +37,6 @@ func main() {
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	go func() {
 		slog.Info("QuantFlow backend listening", "component", "server", "port", cfg.ServerPort, "env", cfg.GoEnv)
