@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/kh0anh/quantflow/internal/domain"
+	"github.com/shopspring/decimal"
 )
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -91,6 +92,82 @@ type CandleRepositoryReader interface {
 	QueryLatestClosedCandles(ctx context.Context, symbol, interval string, limit int) ([]domain.Candle, error)
 }
 
+// TradingProxy is the minimal interface consumed by Trading block group
+// handlers (data_market_price, data_position_info, data_open_orders_count,
+// data_balance, trade_smart_order, trade_close_position, trade_cancel_all_orders
+// — Task 2.5.6, SRS FR-DESIGN-08, FR-DESIGN-09, FR-DESIGN-10).
+//
+// Defined here in the blockly package to avoid an import cycle:
+// engine/blockly must not depend on internal/exchange directly (that layer
+// contains infrastructure / HTTP client concerns). The concrete implementation
+// exchange.BinanceProxy satisfies this interface via Go's implicit structural
+// typing — no adapter needed. The Bot engine (Task 2.7.1) and Backtest
+// simulator (Task 2.6.1) inject the concrete proxy after NewExecutionContext:
+//
+//	execCtx := blockly.NewExecutionContext(ctx, symbol, logger)
+//	execCtx.TradingProxy = binanceProxy
+//
+// Data blocks return decimal.Zero + log a warning when TradingProxy is nil
+// (e.g., in unit-test contexts that do not exercise data/trade blocks).
+// Trade action blocks return an error when TradingProxy is nil.
+type TradingProxy interface {
+	// ── Data block methods (FR-DESIGN-08) ────────────────────────────────
+
+	// GetLastPrice returns the latest ticker price for the given symbol.
+	// Mapped to data_market_price with PRICE_TYPE = "LAST_PRICE".
+	GetLastPrice(ctx context.Context, symbol string) (decimal.Decimal, error)
+
+	// GetAvailableBalance returns the USDT available balance in the Futures wallet.
+	// Mapped to data_balance.
+	GetAvailableBalance(ctx context.Context) (decimal.Decimal, error)
+
+	// GetPositionSize returns the absolute position amount for the symbol.
+	// Positive = Long, Negative = Short. 0 = no open position.
+	// Mapped to data_position_info with FIELD = "POSITION_SIZE".
+	GetPositionSize(ctx context.Context, symbol string) (decimal.Decimal, error)
+
+	// GetPositionEntryPrice returns the average entry price of the open position.
+	// Returns decimal.Zero when no position is open.
+	// Mapped to data_position_info with FIELD = "ENTRY_PRICE".
+	GetPositionEntryPrice(ctx context.Context, symbol string) (decimal.Decimal, error)
+
+	// GetPositionUnrealizedPNL returns the unrealized PnL of the open position.
+	// Returns decimal.Zero when no position is open.
+	// Mapped to data_position_info with FIELD = "UNREALIZED_PNL".
+	GetPositionUnrealizedPNL(ctx context.Context, symbol string) (decimal.Decimal, error)
+
+	// GetOpenOrdersCount returns the count of pending (open) orders for the symbol.
+	// Mapped to data_open_orders_count.
+	GetOpenOrdersCount(ctx context.Context, symbol string) (int, error)
+
+	// ── Trade action methods (FR-DESIGN-09, FR-DESIGN-10) ─────────────────
+
+	// SmartOrder is the "All-in-one" order placement method (FR-DESIGN-09).
+	// Pre-flight: auto-adjusts Leverage and MarginType on the exchange before
+	// placing the order if they differ from the account's current settings.
+	//
+	// Parameters:
+	//   symbol     — trading pair, e.g. "BTCUSDT" (from ExecutionContext.Symbol).
+	//   side       — "LONG" or "SHORT" (blockly.md §3.6.5 SIDE field).
+	//   orderType  — "MARKET" or "LIMIT".
+	//   price      — limit price; ignored (may be Zero) for MARKET orders.
+	//   quantity   — order size in base asset (e.g. BTC).
+	//   leverage   — desired leverage multiplier (1–125).
+	//   marginType — "CROSS" or "ISOLATED".
+	SmartOrder(ctx context.Context, symbol, side, orderType string,
+		price, quantity decimal.Decimal, leverage int, marginType string) error
+
+	// ClosePosition closes the entire open position for the symbol via a
+	// reduce-only MARKET order. No-op (returns nil) when no position is open.
+	// Mapped to trade_close_position.
+	ClosePosition(ctx context.Context, symbol string) error
+
+	// CancelAllOrders cancels every open order for the symbol.
+	// No-op (returns nil) when no open orders exist.
+	// Mapped to trade_cancel_all_orders.
+	CancelAllOrders(ctx context.Context, symbol string) error
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  Execution Context
 // ═══════════════════════════════════════════════════════════════════════════
@@ -155,6 +232,22 @@ type ExecutionContext struct {
 	// Indicator blocks return decimal.Zero + log a warning when CandleRepo is
 	// nil (e.g., in unit-test contexts that do not exercise indicator blocks).
 	CandleRepo CandleRepositoryReader
+
+	// TradingProxy provides live exchange access for Trading block group handlers
+	// (data_market_price, data_position_info, data_open_orders_count, data_balance,
+	// trade_smart_order, trade_close_position, trade_cancel_all_orders — Task 2.5.6,
+	// SRS FR-DESIGN-08, FR-DESIGN-09, FR-DESIGN-10).
+	//
+	// The Bot engine (Task 2.7.1) and Backtest simulator (Task 2.6.1) inject the
+	// concrete exchange.BinanceProxy after calling NewExecutionContext:
+	//
+	//   execCtx := blockly.NewExecutionContext(ctx, symbol, logger)
+	//   execCtx.TradingProxy = binanceProxy
+	//
+	// Data blocks (data_*) return decimal.Zero + log a warning when TradingProxy
+	// is nil (safe degradation for unit tests that don't exercise trading blocks).
+	// Trade action blocks (trade_*) return an error when TradingProxy is nil.
+	TradingProxy TradingProxy
 }
 
 // NewExecutionContext constructs a fresh ExecutionContext for a new Session.
