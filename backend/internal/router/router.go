@@ -50,25 +50,28 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 		// Health check — consumed by Docker HEALTHCHECK and monitoring
 		r.Get("/health", healthHandler)
 
-		// --- Public auth routes (no JWT required) ---
-		// WBS 2.1.1: POST /auth/login (implemented)
+		// /auth — mixed-auth: /login is public, /logout|/me|/refresh require JWT.
+		// All four endpoints share the same /auth prefix so they are consolidated
+		// into a single r.Route to avoid Chi's duplicate-Mount panic (Chi's
+		// r.Group shares the parent Mux, making a second r.Route("/auth") illegal).
+		// WBS 2.1.1: POST /auth/login    (public)
+		// WBS 2.1.2: POST /auth/logout   (JWT required)
+		// WBS 2.1.3: GET  /auth/me       (JWT required)
+		// WBS 2.1.4: POST /auth/refresh  (JWT required)
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/login", authHandler.Login)
+
+			r.Group(func(r chi.Router) {
+				r.Use(appMiddleware.JWTAuth(cfg))
+				r.Post("/logout", authHandler.Logout)
+				r.Get("/me", authHandler.Me)
+				r.Post("/refresh", authHandler.Refresh)
+			})
 		})
 
 		// --- Protected routes — JWT cookie required (WBS 2.1.5) ---
 		r.Group(func(r chi.Router) {
 			r.Use(appMiddleware.JWTAuth(cfg))
-
-			// Auth protected endpoints
-			// WBS 2.1.2: POST /auth/logout  (implemented)
-			// WBS 2.1.3: GET  /auth/me      (implemented)
-			// WBS 2.1.4: POST /auth/refresh (implemented)
-			r.Route("/auth", func(r chi.Router) {
-				r.Post("/logout", authHandler.Logout)
-				r.Get("/me", authHandler.Me)
-				r.Post("/refresh", authHandler.Refresh)
-			})
 
 			// TODO(dev): Mount account handler — PUT /account/profile (WBS 2.1.6)
 			r.Route("/account", func(r chi.Router) {
