@@ -266,7 +266,7 @@ func NewExecutionContext(ctx context.Context, symbol string, logger *slog.Logger
 		Symbol:        symbol,
 		SessionVars:   make(map[string]interface{}),
 		LifecycleVars: make(map[string]interface{}),
-		UnitTracker:   NoOpUnitTracker(),
+		UnitTracker:   NewDefaultSessionUnitTracker(),
 		Logger:        logger,
 	}
 }
