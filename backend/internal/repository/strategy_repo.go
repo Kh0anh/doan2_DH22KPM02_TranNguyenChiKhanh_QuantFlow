@@ -171,9 +171,10 @@ func (r *strategyRepository) FindByID(ctx context.Context, strategyID, userID st
 			s.created_at,
 			s.updated_at,
 			COALESCE(sv.version_number, 0) AS version,
+			sv.id AS version_id,
 			sv.logic_json`).
 		Joins(`LEFT JOIN LATERAL (
-			SELECT version_number, logic_json
+			SELECT id, version_number, logic_json
 			FROM strategy_versions
 			WHERE strategy_id = s.id
 			ORDER BY version_number DESC

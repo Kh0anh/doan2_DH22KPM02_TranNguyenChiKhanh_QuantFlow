@@ -70,10 +70,13 @@ type StrategyCreated struct {
 // Warning and ActiveBotIDs are omitted from the JSON output when nil/empty —
 // they are populated only when at least one bot_instance with status=Running
 // references this strategy (WBS 2.3.3, api.yaml §StrategyDetail).
+// VersionID is the UUID of the strategy_versions record; not exposed to client
+// but used by BotLogic to snapshot strategy_version_id (Task 2.7.5).
 type StrategyDetail struct {
 	ID           string          `json:"id"`
 	Name         string          `json:"name"`
 	Version      int             `json:"version"`
+	VersionID    string          `json:"-"` // UUID, not exposed in API response
 	Status       string          `json:"status"`
 	LogicJSON    json.RawMessage `json:"logic_json"`
 	Warning      *string         `json:"warning,omitempty"`

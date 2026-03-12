@@ -51,25 +51,54 @@ func (BotInstance) TableName() string { return "bot_instances" }
 // BotSummary is the lightweight DTO returned by GET /bots.
 // Exposes only the fields needed for the bot list panel (api.yaml §BotSummary).
 type BotSummary struct {
-	ID        string    `json:"id"`
-	BotName   string    `json:"bot_name"`
-	Symbol    string    `json:"symbol"`
-	Status    string    `json:"status"`
-	TotalPnL  string    `json:"total_pnl"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID              string    `json:"id"`
+	BotName         string    `json:"bot_name"`
+	Symbol          string    `json:"symbol"`
+	Status          string    `json:"status"`
+	TotalPnL        string    `json:"total_pnl"`
+	StrategyID      string    `json:"strategy_id"`
+	StrategyName    string    `json:"strategy_name"`
+	StrategyVersion int       `json:"strategy_version"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // BotDetail is the full DTO returned by GET /bots/{id}.
-// Includes the strategy name resolved by a JOIN (api.yaml §BotDetail).
+// Includes the strategy name resolved by a JOIN and real-time position/orders
+// fetched from Binance API (api.yaml §BotDetail).
 type BotDetail struct {
-	ID                string    `json:"id"`
-	BotName           string    `json:"bot_name"`
-	Symbol            string    `json:"symbol"`
-	Status            string    `json:"status"`
-	TotalPnL          string    `json:"total_pnl"`
-	StrategyID        string    `json:"strategy_id"`
-	StrategyVersionID string    `json:"strategy_version_id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID              string       `json:"id"`
+	BotName         string       `json:"bot_name"`
+	Symbol          string       `json:"symbol"`
+	Status          string       `json:"status"`
+	TotalPnL        string       `json:"total_pnl"`
+	StrategyID      string       `json:"strategy_id"`
+	StrategyName    string       `json:"strategy_name"`
+	StrategyVersion int          `json:"strategy_version"`
+	Position        *BotPosition `json:"position"`    // nil when no position
+	OpenOrders      []OpenOrder  `json:"open_orders"` // empty slice when no orders
+	CreatedAt       time.Time    `json:"created_at"`
+	UpdatedAt       time.Time    `json:"updated_at"`
+}
+
+// BotPosition represents the bot's current position on Binance Futures.
+// Fetched real-time via Binance API, not stored in DB (api.yaml §BotPosition).
+type BotPosition struct {
+	Side          string  `json:"side"`           // "Long" or "Short"
+	EntryPrice    float64 `json:"entry_price"`    // Average entry price
+	Quantity      float64 `json:"quantity"`       // Position size
+	Leverage      int     `json:"leverage"`       // 1x-125x
+	UnrealizedPnL float64 `json:"unrealized_pnl"` // Unrealized profit/loss
+	MarginType    string  `json:"margin_type"`    // "Isolated" or "Cross"
+}
+
+// OpenOrder represents a pending order on Binance Futures.
+// Fetched real-time via Binance API, not stored in DB (api.yaml §OpenOrder).
+type OpenOrder struct {
+	OrderID  string  `json:"order_id"` // Binance order ID
+	Side     string  `json:"side"`     // "Buy" or "Sell"
+	Type     string  `json:"type"`     // "Limit", "Market", "Stop"
+	Price    float64 `json:"price"`    // Order price
+	Quantity float64 `json:"quantity"` // Order quantity
+	Status   string  `json:"status"`   // "New", "PartiallyFilled", etc.
 }

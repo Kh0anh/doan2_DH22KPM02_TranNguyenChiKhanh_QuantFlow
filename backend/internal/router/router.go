@@ -2,12 +2,14 @@ package router
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/kh0anh/quantflow/config"
+	"github.com/kh0anh/quantflow/internal/engine/bot"
 	"github.com/kh0anh/quantflow/internal/exchange"
 	"github.com/kh0anh/quantflow/internal/handler"
 	"github.com/kh0anh/quantflow/internal/logic"
@@ -127,6 +129,14 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 			gapFiller := exchange.NewGapFillerWorker(candleRepo, exchangeLimiter, cfg.WatchedSymbols)
 			go gapFiller.Run(ctx)
 
+			// WBS 2.7.1: Initialize Bot Manager and Bot Event Listener (two-phase init)
+			// for Live Trade bot orchestration. Task 2.7.5 wires the CRUD handlers below.
+			varRepo := repository.NewBotLifecycleVarRepository(db)
+			logRepo := repository.NewBotLogRepository(db)
+			botManager := bot.NewBotManager(db, slog.Default(), varRepo, logRepo, nil)
+			botListener := bot.NewBotEventListener(ctx, botManager, slog.Default())
+			botManager.SetListener(botListener)
+
 			// WBS 2.6.5: POST /backtests (async launch), GET /backtests/{id} (poll),
 			// POST /backtests/{id}/cancel. Results held in-memory (no DB persistence).
 			backtestLogic := logic.NewBacktestLogic(strategyRepo, candleRepo, nil)
@@ -137,8 +147,24 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 				r.Post("/{id}/cancel", backtestHandler.Cancel)
 			})
 
-			// TODO(dev): Mount bot handlers — CRUD + control + logs /bots (WBS 2.7.5-2.7.7)
+			// WBS 2.7.5: Bot CRUD APIs — GET/POST/DELETE /bots, GET /bots/{id} ✓
+			// POST creates Bot and runs immediately (Running status)
+			botRepo := repository.NewBotRepository(db)
+			botLogic := logic.NewBotLogic(
+				botRepo,
+				strategyRepo,
+				apiKeyRepo,
+				candleRepo,
+				botManager,
+				pkgcrypto.DeriveKey(cfg.AESKey),
+				exchangeLimiter,
+			)
+			botHandler := handler.NewBotHandler(botLogic)
 			r.Route("/bots", func(r chi.Router) {
+				r.Get("/", botHandler.List)
+				r.Post("/", botHandler.Create)
+				r.Get("/{id}", botHandler.Get)
+				r.Delete("/{id}", botHandler.Delete)
 			})
 
 			// WBS 2.4.3: GET /market/symbols (24hr ticker — list + price + volume) ✓
