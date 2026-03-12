@@ -200,6 +200,7 @@ type BotManager struct {
 	db             *gorm.DB
 	logger         *slog.Logger
 	lifecycleState *LifecycleStateManager // Task 2.7.3: lifecycle variable persistence
+	botLogger      *BotLogger             // Task 2.7.4: bot session log persistence and WS push
 
 	// listener is the BotEventListener that manages Binance kline WS streams.
 	// Wired after construction via SetListener() to break the mutual init cycle:
@@ -221,10 +222,20 @@ type BotManager struct {
 //   - varRepo: repository for bot_lifecycle_variables — used by
 //     LifecycleStateManager to Load/Persist variable state per Session
 //     (Task 2.7.3). Pass nil to skip persistence (e.g. in unit tests).
+//   - logRepo:  repository for bot_logs — BotLogger uses it to persist one
+//     row per Session outcome (Task 2.7.4). Pass nil to disable log persistence.
+//   - wsPusher: BotLogPusher implementation for live WS fan-out (Task 2.7.4).
+//     Pass nil to disable WS push (e.g. before HTTP server starts, unit tests).
 //
 // After construction, call SetListener() to wire in the BotEventListener
 // (Task 2.7.2) before the first StartBot() call.
-func NewBotManager(db *gorm.DB, logger *slog.Logger, varRepo repository.BotLifecycleVarRepository) *BotManager {
+func NewBotManager(
+	db *gorm.DB,
+	logger *slog.Logger,
+	varRepo repository.BotLifecycleVarRepository,
+	logRepo repository.BotLogRepository,
+	wsPusher BotLogPusher,
+) *BotManager {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -232,11 +243,16 @@ func NewBotManager(db *gorm.DB, logger *slog.Logger, varRepo repository.BotLifec
 	if varRepo != nil {
 		lifecycleState = NewLifecycleStateManager(varRepo, logger)
 	}
+	var botLogger *BotLogger
+	if logRepo != nil {
+		botLogger = NewBotLogger(logRepo, wsPusher, logger)
+	}
 	return &BotManager{
 		bots:           make(map[string]*RunningBot),
 		db:             db,
 		logger:         logger,
 		lifecycleState: lifecycleState,
+		botLogger:      botLogger,
 	}
 }
 
@@ -552,6 +568,15 @@ func (m *BotManager) runSession(
 				)
 			}
 		}
+		// ── Task 2.7.4: Write bot_log to DB and push WS event ────────────
+		if m.botLogger != nil {
+			logMsg := fmt.Sprintf("Session completed: %d units consumed", result.UnitsUsed)
+			if logErr := m.botLogger.Log(ctx, cfg.BotID, domain.BotLogActionExecuted, logMsg, result.UnitsUsed); logErr != nil {
+				sessionLogger.Warn("bot: failed to write bot log",
+					slog.String("error", logErr.Error()),
+				)
+			}
+		}
 		return
 	}
 
@@ -559,6 +584,14 @@ func (m *BotManager) runSession(
 		sessionLogger.Warn("bot: session UNIT_COST_EXCEEDED — session terminated, bot continues",
 			slog.Int("units_used", result.UnitsUsed),
 		)
+		if m.botLogger != nil {
+			logMsg := fmt.Sprintf("Unit cost budget exhausted: %d units consumed", result.UnitsUsed)
+			if logErr := m.botLogger.Log(ctx, cfg.BotID, domain.BotLogActionUnitCostExceeded, logMsg, result.UnitsUsed); logErr != nil {
+				sessionLogger.Warn("bot: failed to write bot log",
+					slog.String("error", logErr.Error()),
+				)
+			}
+		}
 		return
 	}
 
@@ -574,6 +607,13 @@ func (m *BotManager) runSession(
 	sessionLogger.Error("bot: session execution error — bot remains Running",
 		slog.String("error", err.Error()),
 	)
+	if m.botLogger != nil {
+		if logErr := m.botLogger.Log(ctx, cfg.BotID, domain.BotLogActionError, err.Error(), result.UnitsUsed); logErr != nil {
+			sessionLogger.Warn("bot: failed to write bot log",
+				slog.String("error", logErr.Error()),
+			)
+		}
+	}
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -596,6 +636,16 @@ func (m *BotManager) handlePanic(rb *RunningBot, recovered any, stack []byte, lo
 		slog.Any("panic_value", recovered),
 		slog.String("stack_trace", string(stack)),
 	)
+	// Use context.Background() because the bot's context is already cancelled
+	// by the time a panic is caught in the deferred recover() wrapper.
+	if m.botLogger != nil {
+		panicMsg := fmt.Sprintf("PANIC: %v", recovered)
+		if logErr := m.botLogger.Log(context.Background(), rb.config.BotID, domain.BotLogActionPanic, panicMsg, 0); logErr != nil {
+			logger.Warn("bot: failed to write panic bot log",
+				slog.String("error", logErr.Error()),
+			)
+		}
+	}
 }
 
 // updateStatusInDB persists the given status to bot_instances.status for the
