@@ -127,8 +127,14 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 			gapFiller := exchange.NewGapFillerWorker(candleRepo, exchangeLimiter, cfg.WatchedSymbols)
 			go gapFiller.Run(ctx)
 
-			// TODO(dev): Mount backtest handlers — POST/GET/cancel /backtests (WBS 2.6.5)
+			// WBS 2.6.5: POST /backtests (async launch), GET /backtests/{id} (poll),
+			// POST /backtests/{id}/cancel. Results held in-memory (no DB persistence).
+			backtestLogic := logic.NewBacktestLogic(strategyRepo, candleRepo, nil)
+			backtestHandler := handler.NewBacktestHandler(backtestLogic)
 			r.Route("/backtests", func(r chi.Router) {
+				r.Post("/", backtestHandler.Create)
+				r.Get("/{id}", backtestHandler.Get)
+				r.Post("/{id}/cancel", backtestHandler.Cancel)
 			})
 
 			// TODO(dev): Mount bot handlers — CRUD + control + logs /bots (WBS 2.7.5-2.7.7)
