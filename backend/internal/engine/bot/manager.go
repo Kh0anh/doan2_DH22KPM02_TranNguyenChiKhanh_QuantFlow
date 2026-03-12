@@ -47,6 +47,7 @@ import (
 
 	"github.com/kh0anh/quantflow/internal/domain"
 	"github.com/kh0anh/quantflow/internal/engine/blockly"
+	"github.com/kh0anh/quantflow/internal/repository"
 	"gorm.io/gorm"
 )
 
@@ -194,10 +195,11 @@ func (rb *RunningBot) setStatus(s string) {
 //
 // BotManager is safe for concurrent use from multiple goroutines.
 type BotManager struct {
-	mu     sync.RWMutex
-	bots   map[string]*RunningBot
-	db     *gorm.DB
-	logger *slog.Logger
+	mu             sync.RWMutex
+	bots           map[string]*RunningBot
+	db             *gorm.DB
+	logger         *slog.Logger
+	lifecycleState *LifecycleStateManager // Task 2.7.3: lifecycle variable persistence
 
 	// listener is the BotEventListener that manages Binance kline WS streams.
 	// Wired after construction via SetListener() to break the mutual init cycle:
@@ -212,21 +214,29 @@ type BotManager struct {
 
 // NewBotManager constructs a BotManager.
 //
-//   - db:     GORM DB instance used to update bot_instances.status on state
+//   - db:      GORM DB instance used to update bot_instances.status on state
 //     transitions (Running → Stopped / Error) for persistence across restarts.
-//   - logger: a slog.Logger decorated with service-level fields. Each bot
+//   - logger:  a slog.Logger decorated with service-level fields. Each bot
 //     goroutine derives a child logger with its bot_id attached.
+//   - varRepo: repository for bot_lifecycle_variables — used by
+//     LifecycleStateManager to Load/Persist variable state per Session
+//     (Task 2.7.3). Pass nil to skip persistence (e.g. in unit tests).
 //
 // After construction, call SetListener() to wire in the BotEventListener
 // (Task 2.7.2) before the first StartBot() call.
-func NewBotManager(db *gorm.DB, logger *slog.Logger) *BotManager {
+func NewBotManager(db *gorm.DB, logger *slog.Logger, varRepo repository.BotLifecycleVarRepository) *BotManager {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	var lifecycleState *LifecycleStateManager
+	if varRepo != nil {
+		lifecycleState = NewLifecycleStateManager(varRepo, logger)
+	}
 	return &BotManager{
-		bots:   make(map[string]*RunningBot),
-		db:     db,
-		logger: logger,
+		bots:           make(map[string]*RunningBot),
+		db:             db,
+		logger:         logger,
+		lifecycleState: lifecycleState,
 	}
 }
 
@@ -497,11 +507,28 @@ func (m *BotManager) runSession(
 	)
 
 	cfg := rb.config
+
+	// ── Task 2.7.3: Pre-load lifecycle variables from DB ──────────────────
+	var lifecycleVars map[string]interface{}
+	if m.lifecycleState != nil {
+		loaded, loadErr := m.lifecycleState.Load(ctx, cfg.BotID)
+		if loadErr != nil {
+			sessionLogger.Warn("bot: failed to load lifecycle vars — starting session with empty state",
+				slog.String("error", loadErr.Error()),
+			)
+			lifecycleVars = make(map[string]interface{})
+		} else {
+			lifecycleVars = loaded
+		}
+	} else {
+		lifecycleVars = make(map[string]interface{})
+	}
+
 	sessionCfg := SessionConfig{
 		BotID:         cfg.BotID,
 		Symbol:        cfg.Symbol,
 		LogicJSON:     cfg.LogicJSON,
-		LifecycleVars: make(map[string]interface{}), // Task 2.7.3 will pre-load from DB
+		LifecycleVars: lifecycleVars,
 		CandleRepo:    cfg.CandleRepo,
 		TradingProxy:  cfg.TradingProxy,
 	}
@@ -513,7 +540,18 @@ func (m *BotManager) runSession(
 		sessionLogger.Info("bot: session completed",
 			slog.Int("units_used", result.UnitsUsed),
 		)
-		// Task 2.7.3 will persist result.UpdatedLifecycleVars to DB here.
+		// ── Task 2.7.3: Persist updated lifecycle vars to DB ─────────────
+		if m.lifecycleState != nil {
+			if persistErr := m.lifecycleState.Persist(ctx, cfg.BotID, result.UpdatedLifecycleVars); persistErr != nil {
+				// Non-fatal: the bot continues Running. In-RAM state is still
+				// correct for the current goroutine's lifetime; the next successful
+				// session will overwrite the stale DB rows.
+				sessionLogger.Warn("bot: failed to persist lifecycle vars — in-RAM state preserved",
+					slog.String("error", persistErr.Error()),
+					slog.Int("units_used", result.UnitsUsed),
+				)
+			}
+		}
 		return
 	}
 
