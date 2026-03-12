@@ -103,6 +103,13 @@ type BotConfig struct {
 	// directly into SessionConfig by the bot goroutine.
 	APIKeyID string
 
+	// Interval is the kline timeframe extracted from the strategy's logic_json
+	// event_on_candle block at bot creation time (e.g., "1m", "1h").
+	// BotEventListener uses this to subscribe to the correct Binance WS stream
+	// for this bot (Task 2.7.2). Set by BotLogic.StartBotInstance() (Task 2.7.5)
+	// before calling BotManager.StartBot().
+	Interval string
+
 	// CandleRepo provides read access to candles_data for indicator blocks.
 	// Injected by BotLogic.StartBotInstance() before calling StartBot().
 	CandleRepo blockly.CandleRepositoryReader
@@ -191,6 +198,16 @@ type BotManager struct {
 	bots   map[string]*RunningBot
 	db     *gorm.DB
 	logger *slog.Logger
+
+	// listener is the BotEventListener that manages Binance kline WS streams.
+	// Wired after construction via SetListener() to break the mutual init cycle:
+	//
+	//   manager  := NewBotManager(db, logger)
+	//   listener := NewBotEventListener(serverCtx, manager, logger)
+	//   manager.SetListener(listener)  ← back-reference
+	//
+	// nil-checked before use in StartBot and removeBotFromRegistry.
+	listener *BotEventListener
 }
 
 // NewBotManager constructs a BotManager.
@@ -199,6 +216,9 @@ type BotManager struct {
 //     transitions (Running → Stopped / Error) for persistence across restarts.
 //   - logger: a slog.Logger decorated with service-level fields. Each bot
 //     goroutine derives a child logger with its bot_id attached.
+//
+// After construction, call SetListener() to wire in the BotEventListener
+// (Task 2.7.2) before the first StartBot() call.
 func NewBotManager(db *gorm.DB, logger *slog.Logger) *BotManager {
 	if logger == nil {
 		logger = slog.Default()
@@ -210,6 +230,20 @@ func NewBotManager(db *gorm.DB, logger *slog.Logger) *BotManager {
 	}
 }
 
+// SetListener wires the BotEventListener into the manager after both have been
+// constructed. This two-phase initialization breaks the mutual reference cycle:
+//
+//	manager  := bot.NewBotManager(db, logger)
+//	listener := bot.NewBotEventListener(serverCtx, manager, logger)
+//	manager.SetListener(listener)
+//
+// SetListener must be called before the first StartBot() invocation to ensure
+// every started bot is automatically subscribed to its kline stream (Task 2.7.2).
+// It is not safe to call SetListener after bots have been started.
+func (m *BotManager) SetListener(listener *BotEventListener) {
+	m.listener = listener
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  Public API
 // ═══════════════════════════════════════════════════════════════════════════
@@ -219,11 +253,14 @@ func NewBotManager(db *gorm.DB, logger *slog.Logger) *BotManager {
 // Returns ErrBotAlreadyRunning if a bot with the same BotID is already active.
 // The bot goroutine begins its select event-loop immediately and is ready to
 // process events delivered via DispatchEvent().
+//
+// After the goroutine is launched, Subscribe is called on the BotEventListener
+// (if wired) so the bot starts receiving closed-candle events for its
+// (Symbol, Interval) pair (Task 2.7.2).
 func (m *BotManager) StartBot(ctx context.Context, cfg BotConfig) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	if _, exists := m.bots[cfg.BotID]; exists {
+		m.mu.Unlock()
 		return fmt.Errorf("StartBot (bot_id=%s): %w", cfg.BotID, ErrBotAlreadyRunning)
 	}
 
@@ -238,6 +275,7 @@ func (m *BotManager) StartBot(ctx context.Context, cfg BotConfig) error {
 	}
 
 	m.bots[cfg.BotID] = rb
+	m.mu.Unlock()
 
 	botLogger := m.logger.With(
 		slog.String("bot_id", cfg.BotID),
@@ -247,8 +285,17 @@ func (m *BotManager) StartBot(ctx context.Context, cfg BotConfig) error {
 
 	go m.runBotLoop(botCtx, rb, botLogger)
 
+	// Subscribe to the Binance kline stream AFTER launching the goroutine so the
+	// bot's event channel is ready before the first candle event can arrive.
+	// The call is made outside m.mu to avoid a lock-order dependency with
+	// BotEventListener.mu (which can call DispatchEvent → m.mu.RLock in fanOut).
+	if m.listener != nil {
+		m.listener.Subscribe(cfg.BotID, cfg.Symbol, cfg.Interval)
+	}
+
 	botLogger.Info("bot: goroutine started",
 		slog.String("strategy_version_id", cfg.StrategyVersionID),
+		slog.String("interval", cfg.Interval),
 	)
 
 	return nil
@@ -532,9 +579,18 @@ func (m *BotManager) updateStatusInDB(botID, status string, logger *slog.Logger)
 
 // removeBotFromRegistry removes the bot from the manager's in-memory registry
 // after the goroutine has exited. Called from the deferred cleanup in runBotLoop.
+//
+// Unsubscribe is called after releasing m.mu to preserve lock-order safety:
+// BotEventListener.fanOut acquires l.mu then calls DispatchEvent (m.mu.RLock);
+// calling Unsubscribe (l.mu) while holding m.mu would invert that order.
 func (m *BotManager) removeBotFromRegistry(botID string, logger *slog.Logger) {
 	m.mu.Lock()
 	delete(m.bots, botID)
 	m.mu.Unlock()
+
+	if m.listener != nil {
+		m.listener.Unsubscribe(botID)
+	}
+
 	logger.Info("bot: removed from registry")
 }
