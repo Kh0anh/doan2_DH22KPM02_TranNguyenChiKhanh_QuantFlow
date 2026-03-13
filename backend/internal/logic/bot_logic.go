@@ -82,6 +82,7 @@ type BotLogic struct {
 	strategyRepo repository.StrategyRepository
 	apiKeyRepo   repository.ApiKeyRepository
 	candleRepo   repository.CandleRepository
+	botLogRepo   repository.BotLogRepository // For reading activity logs (Task 2.7.7)
 	botManager   *bot.BotManager
 	aesKey       []byte                        // For decrypting API secret via ApiKeyLogic pattern
 	limiter      *exchange.ExchangeRateLimiter // For building BinanceProxy
@@ -95,6 +96,7 @@ func NewBotLogic(
 	strategyRepo repository.StrategyRepository,
 	apiKeyRepo repository.ApiKeyRepository,
 	candleRepo repository.CandleRepository,
+	botLogRepo repository.BotLogRepository,
 	botManager *bot.BotManager,
 	aesKey []byte,
 	limiter *exchange.ExchangeRateLimiter,
@@ -104,6 +106,7 @@ func NewBotLogic(
 		strategyRepo: strategyRepo,
 		apiKeyRepo:   apiKeyRepo,
 		candleRepo:   candleRepo,
+		botLogRepo:   botLogRepo,
 		botManager:   botManager,
 		aesKey:       aesKey,
 		limiter:      limiter,
@@ -543,5 +546,92 @@ func (l *BotLogic) StopBot(ctx context.Context, botID, userID string, closePosit
 		Status:    domain.BotStatusStopped,
 		TotalPnL:  finalBot.TotalPnL,
 		UpdatedAt: finalBot.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}, nil
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  DTOs for Bot Logs API (Task 2.7.7)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// BotLogEntry is the per-row DTO returned by ListBotLogs, matching
+// api.yaml §BotLogEntry. ActionDecision may be empty for informational logs.
+type BotLogEntry struct {
+	ID             int64  `json:"id"`
+	ActionDecision string `json:"action_decision"`
+	Message        string `json:"message"`
+	CreatedAt      string `json:"created_at"` // ISO8601 timestamp
+}
+
+// BotLogsResult is the top-level response DTO for GET /bots/{id}/logs,
+// matching api.yaml §CursorPagination envelope.
+type BotLogsResult struct {
+	Data       []BotLogEntry `json:"data"`
+	NextCursor *string       `json:"next_cursor"` // nil when has_more=false
+	HasMore    bool          `json:"has_more"`
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ListBotLogs — GET /bots/{id}/logs (Task 2.7.7)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ListBotLogs returns a cursor-paginated slice of activity logs for the given
+// bot (WBS 2.7.7, api.yaml §GET /bots/{id}/logs, SRS FR-MONITOR-03).
+//
+// Pagination strategy (limit+1 trick):
+//   - Fetch limit+1 rows from the repository.
+//   - If len(rows) > limit: trim the last row, set has_more=true, set
+//     next_cursor to the ID of the last kept row.
+//   - Otherwise: has_more=false, next_cursor=nil.
+//
+// Rows are ordered (created_at DESC, id DESC) — newest log first. Passing
+// cursor=0 loads the most recent page; subsequent pages pass the last row\'s ID.
+//
+// Return patterns:
+//   - (*BotLogsResult, nil) — success; data may be an empty slice.
+//   - (nil, ErrBotNotFound) — 404 (bot does not exist or belongs to another user).
+//   - (nil, other)          — 500 internal error.
+func (l *BotLogic) ListBotLogs(ctx context.Context, botID, userID string, limit int, cursor int64) (*BotLogsResult, error) {
+	// Ownership check: ensure the bot exists and belongs to the requesting user.
+	// FindRawByID returns nil (not an error) when bot is not found or not owned.
+	botInstance, err := l.botRepo.FindRawByID(ctx, botID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("bot_logic: ListBotLogs: find bot: %w", err)
+	}
+	if botInstance == nil {
+		return nil, ErrBotNotFound
+	}
+
+	// Fetch limit+1 rows to determine whether a next page exists.
+	rows, err := l.botLogRepo.ListByBotID(ctx, botID, limit+1, cursor)
+	if err != nil {
+		return nil, fmt.Errorf("bot_logic: ListBotLogs: list logs: %w", err)
+	}
+
+	hasMore := len(rows) > limit
+	if hasMore {
+		rows = rows[:limit] // trim the sentinel row used for has_more detection
+	}
+
+	entries := make([]BotLogEntry, len(rows))
+	for i, row := range rows {
+		entries[i] = BotLogEntry{
+			ID:             row.ID,
+			ActionDecision: row.ActionDecision,
+			Message:        row.Message,
+			CreatedAt:      row.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		}
+	}
+
+	var nextCursor *string
+	if hasMore {
+		// next_cursor is the ID of the last returned entry (string per api.yaml).
+		c := fmt.Sprintf("%d", entries[len(entries)-1].ID)
+		nextCursor = &c
+	}
+
+	return &BotLogsResult{
+		Data:       entries,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
 	}, nil
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -343,5 +344,81 @@ func (h *BotHandler) Stop(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]any{
 		"message": msg,
 		"data":    result,
+	})
+}
+
+// Logs handles GET /api/v1/bots/{id}/logs.
+//
+// Returns a cursor-paginated list of bot activity logs ordered newest-first
+// (created_at DESC). On first load the cursor is omitted; subsequent pages
+// pass the next_cursor value returned by the previous response.
+//
+// Flow (WBS 2.7.7, api.yaml §GET /bots/{id}/logs, SRS FR-MONITOR-03):
+//  1. Extract JWT claims from context.
+//  2. Read {id} path parameter.
+//  3. Parse optional ?cursor query param (string → int64; 0 = newest page).
+//  4. Parse optional ?limit query param (default 50, clamp [1, 200]).
+//  5. Delegate to BotLogic.ListBotLogs.
+//  6. Return 200 { data: []BotLogEntry, pagination: CursorPagination }.
+//
+// Success       → 200  { data, pagination: { next_cursor, has_more } }
+// Bot not found → 404  BOT_NOT_FOUND
+// Auth ✗        → 401  UNAUTHORIZED
+// Server ✗      → 500  INTERNAL_ERROR
+func (h *BotHandler) Logs(w http.ResponseWriter, r *http.Request) {
+	claims, ok := appMiddleware.ClaimsFromContext(r.Context())
+	if !ok {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "No active session.")
+		return
+	}
+
+	botID := chi.URLParam(r, "id")
+	if botID == "" {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "Bot ID is required.")
+		return
+	}
+
+	// Parse ?cursor — empty or non-numeric defaults to 0 (load newest page).
+	var cursor int64
+	if raw := strings.TrimSpace(r.URL.Query().Get("cursor")); raw != "" {
+		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed > 0 {
+			cursor = parsed
+		}
+	}
+
+	// Parse ?limit — default 50, clamped to [1, 200] per api.yaml.
+	const defaultLogLimit = 50
+	const maxLogLimit = 200
+	limit := defaultLogLimit
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			switch {
+			case parsed < 1:
+				limit = 1
+			case parsed > maxLogLimit:
+				limit = maxLogLimit
+			default:
+				limit = parsed
+			}
+		}
+	}
+
+	result, err := h.botLogic.ListBotLogs(r.Context(), botID, claims.UserID, limit, cursor)
+	if err != nil {
+		switch {
+		case errors.Is(err, logic.ErrBotNotFound):
+			response.Error(w, http.StatusNotFound, "BOT_NOT_FOUND", "Bot not found.")
+		default:
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "An internal error occurred. Please try again later.")
+		}
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"data": result.Data,
+		"pagination": map[string]any{
+			"next_cursor": result.NextCursor,
+			"has_more":    result.HasMore,
+		},
 	})
 }

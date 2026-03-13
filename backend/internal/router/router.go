@@ -155,6 +155,7 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 				strategyRepo,
 				apiKeyRepo,
 				candleRepo,
+				logRepo,
 				botManager,
 				pkgcrypto.DeriveKey(cfg.AESKey),
 				exchangeLimiter,
@@ -168,6 +169,8 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 				// WBS 2.7.6: Bot Control APIs — Start/Stop (close_position flag) ✓
 				r.Post("/{id}/start", botHandler.Start)
 				r.Post("/{id}/stop", botHandler.Stop)
+				// WBS 2.7.7: Bot Logs API — cursor-based pagination ✓
+				r.Get("/{id}/logs", botHandler.Logs)
 			})
 
 			// WBS 2.4.3: GET /market/symbols (24hr ticker — list + price + volume) ✓
