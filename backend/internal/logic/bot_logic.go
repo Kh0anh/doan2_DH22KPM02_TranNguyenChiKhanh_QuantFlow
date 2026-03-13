@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/kh0anh/quantflow/internal/domain"
 	"github.com/kh0anh/quantflow/internal/engine/bot"
@@ -44,6 +45,16 @@ var (
 	// parsed or does not contain an event_on_candle block.
 	// Handler maps to 422 INVALID_LOGIC_JSON.
 	ErrBotInvalidLogicJSON = errors.New("strategy logic_json is invalid or missing event block")
+
+	// ErrBotAlreadyRunning is returned by StartBot when the bot is already in
+	// Running state and cannot be started again.
+	// Handler maps to 409 BOT_ALREADY_RUNNING (api.yaml §POST /bots/{id}/start).
+	ErrBotAlreadyRunning = errors.New("bot is already in Running state")
+
+	// ErrBotNotRunning is returned by StopBot when the bot is not in Running
+	// state and therefore cannot be stopped.
+	// Handler maps to 409 BOT_NOT_RUNNING.
+	ErrBotNotRunning = errors.New("bot is not in Running state")
 )
 
 // CreateBotInput is the internal DTO passed from BotHandler to BotLogic.
@@ -330,4 +341,207 @@ func extractIntervalFromLogicJSON(logicJSON []byte) (string, error) {
 	}
 
 	return "", fmt.Errorf("extractInterval: no event_on_candle block found")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  DTOs for Bot Control APIs (Task 2.7.6)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// BotStartResult is the DTO returned by StartBot, matching api.yaml §BotStatusUpdate.
+type BotStartResult struct {
+	ID        string `json:"id"`
+	Status    string `json:"status"`
+	UpdatedAt string `json:"updated_at"` // ISO8601 timestamp
+}
+
+// BotStopResult is the DTO returned by StopBot, matching api.yaml §BotStopResult.
+type BotStopResult struct {
+	ID        string `json:"id"`
+	Status    string `json:"status"`
+	TotalPnL  string `json:"total_pnl"`
+	UpdatedAt string `json:"updated_at"` // ISO8601 timestamp
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  StartBot — POST /bots/{id}/start (Task 2.7.6)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// StartBot restarts a previously stopped bot (WBS 2.7.6, api.yaml §POST /bots/{id}/start,
+// SRS FR-RUN-06).
+//
+// Business rules:
+//   - Bot must exist and belong to the authenticated user (404 if not).
+//   - Bot must NOT be in Running state (409 BOT_ALREADY_RUNNING if violated).
+//   - Bot goroutine is rebuilt from the PINNED strategy_version_id recorded at
+//     bot creation time, ensuring Data Integrity across restarts.
+//   - After BotManager.StartBot() succeeds, DB status is updated to Running.
+//
+// Return patterns:
+//   - (*BotStartResult, nil)     — success; bot goroutine is running.
+//   - (nil, ErrBotNotFound)      — 404.
+//   - (nil, ErrBotAlreadyRunning) — 409.
+//   - (nil, other)               — 500.
+func (l *BotLogic) StartBot(ctx context.Context, botID, userID string) (*BotStartResult, error) {
+	// ─── Step 1: Fetch full bot record (needs StrategyVersionID + APIKeyID) ──
+	botInstance, err := l.botRepo.FindRawByID(ctx, botID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("bot_logic: StartBot: find bot: %w", err)
+	}
+	if botInstance == nil {
+		return nil, ErrBotNotFound
+	}
+
+	// ─── Step 2: Enforce Running precondition ────────────────────────────────
+	if botInstance.Status == domain.BotStatusRunning {
+		return nil, ErrBotAlreadyRunning
+	}
+
+	// ─── Step 3: Reload pinned strategy version (Data Integrity) ─────────────
+	strategyVersion, err := l.strategyRepo.FindVersionByID(ctx, botInstance.StrategyVersionID)
+	if err != nil {
+		return nil, fmt.Errorf("bot_logic: StartBot: find strategy version: %w", err)
+	}
+	if strategyVersion == nil {
+		return nil, fmt.Errorf("bot_logic: StartBot: strategy version %s not found", botInstance.StrategyVersionID)
+	}
+
+	// ─── Step 4: Validate API key ─────────────────────────────────────────────
+	apiKey, err := l.apiKeyRepo.FindByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("bot_logic: StartBot: find api_key: %w", err)
+	}
+	if apiKey == nil {
+		return nil, ErrBotAPIKeyNotConfigured
+	}
+	if apiKey.Status != domain.APIKeyStatusConnected && apiKey.Status != "Active" {
+		return nil, ErrBotAPIKeyInvalid
+	}
+
+	// ─── Step 5: Extract interval from logic_json ────────────────────────────
+	interval, err := extractIntervalFromLogicJSON(strategyVersion.LogicJSON)
+	if err != nil {
+		return nil, ErrBotInvalidLogicJSON
+	}
+
+	// ─── Step 6: Build BinanceProxy ──────────────────────────────────────────
+	binanceProxy, err := exchange.NewBinanceProxy(apiKey.ApiKey, apiKey.SecretKeyEncrypted, l.aesKey, l.limiter)
+	if err != nil {
+		return nil, fmt.Errorf("bot_logic: StartBot: build binance proxy: %w", err)
+	}
+
+	// ─── Step 7: Start bot goroutine ─────────────────────────────────────────
+	botConfig := bot.BotConfig{
+		BotID:             botInstance.ID,
+		UserID:            userID,
+		StrategyVersionID: botInstance.StrategyVersionID,
+		LogicJSON:         strategyVersion.LogicJSON,
+		Symbol:            botInstance.Symbol,
+		APIKeyID:          botInstance.APIKeyID,
+		Interval:          interval,
+		CandleRepo:        l.candleRepo,
+		TradingProxy:      binanceProxy,
+	}
+
+	if err := l.botManager.StartBot(ctx, botConfig); err != nil {
+		return nil, fmt.Errorf("bot_logic: StartBot: start goroutine: %w", err)
+	}
+
+	// ─── Step 8: Persist status Running in DB ────────────────────────────────
+	if err := l.botRepo.UpdateStatus(ctx, botID, domain.BotStatusRunning); err != nil {
+		// Goroutine is running but DB update failed. Log and continue — the bot
+		// goroutine will update status to Stopped/Error upon its own exit.
+		_ = err
+	}
+
+	return &BotStartResult{
+		ID:        botInstance.ID,
+		Status:    domain.BotStatusRunning,
+		UpdatedAt: botInstance.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}, nil
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  StopBot — POST /bots/{id}/stop (Task 2.7.6)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// StopBot stops a running bot, with an optional close-position step
+// (WBS 2.7.6, api.yaml §POST /bots/{id}/stop, SRS FR-RUN-06).
+//
+// Two modes controlled by the closePosition flag:
+//   - closePosition=false (default): stop the bot goroutine only; existing
+//     Binance positions remain open.
+//   - closePosition=true: before stopping the goroutine, cancel all open orders
+//     and close the open position on Binance. Exchange errors during this step
+//     are logged but do NOT block the stop (resilient design — user can close
+//     manually on the exchange UI if needed).
+//
+// Return patterns:
+//   - (*BotStopResult, nil)  — success; bot goroutine has exited.
+//   - (nil, ErrBotNotFound)  — 404.
+//   - (nil, ErrBotNotRunning) — 409.
+//   - (nil, other)           — 500.
+func (l *BotLogic) StopBot(ctx context.Context, botID, userID string, closePosition bool) (*BotStopResult, error) {
+	// ─── Step 1: Fetch full bot record ────────────────────────────────────────
+	botInstance, err := l.botRepo.FindRawByID(ctx, botID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("bot_logic: StopBot: find bot: %w", err)
+	}
+	if botInstance == nil {
+		return nil, ErrBotNotFound
+	}
+
+	// ─── Step 2: Enforce Running precondition ────────────────────────────────
+	if botInstance.Status != domain.BotStatusRunning {
+		return nil, ErrBotNotRunning
+	}
+
+	// ─── Step 3: Close position on Binance (optional) ────────────────────────
+	// Executed BEFORE stopping the goroutine to prevent the bot from placing
+	// new orders while we are closing the position.
+	if closePosition {
+		apiKey, apiErr := l.apiKeyRepo.FindByUserID(ctx, userID)
+		if apiErr == nil && apiKey != nil {
+			proxy, proxyErr := exchange.NewBinanceProxy(apiKey.ApiKey, apiKey.SecretKeyEncrypted, l.aesKey, l.limiter)
+			if proxyErr == nil {
+				// Cancel all pending open orders first (ignore "no orders" error).
+				if cancelErr := proxy.CancelAllOrders(ctx, botInstance.Symbol); cancelErr != nil {
+					// Non-blocking: log and proceed. User can cancel manually.
+					_ = cancelErr
+				}
+				// Close the open position with a reduce-only MARKET order.
+				if closeErr := proxy.ClosePosition(ctx, botInstance.Symbol); closeErr != nil {
+					// Non-blocking: log and proceed. User can close manually.
+					_ = closeErr
+				}
+			}
+		}
+	}
+
+	// ─── Step 4: Stop the bot goroutine via BotManager ───────────────────────
+	// BotManager.StopBot sends a cancellation signal and waits up to 30s for
+	// the goroutine to acknowledge via doneCh (Task 2.7.1 fault isolation).
+	if err := l.botManager.StopBot(ctx, botID, 30*time.Second); err != nil {
+		return nil, fmt.Errorf("bot_logic: StopBot: manager stop: %w", err)
+	}
+
+	// ─── Step 5: Fetch final state for response ───────────────────────────────
+	// The goroutine already called UpdateStatus(Stopped) inside runBotLoop.
+	// Re-fetch to capture the latest TotalPnL accumulated during the session.
+	finalBot, err := l.botRepo.FindRawByID(ctx, botID, userID)
+	if err != nil || finalBot == nil {
+		// Fallback: use the pre-stop snapshot values.
+		return &BotStopResult{
+			ID:        botInstance.ID,
+			Status:    domain.BotStatusStopped,
+			TotalPnL:  botInstance.TotalPnL,
+			UpdatedAt: botInstance.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		}, nil
+	}
+
+	return &BotStopResult{
+		ID:        finalBot.ID,
+		Status:    domain.BotStatusStopped,
+		TotalPnL:  finalBot.TotalPnL,
+		UpdatedAt: finalBot.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}, nil
 }

@@ -165,6 +165,9 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 				r.Post("/", botHandler.Create)
 				r.Get("/{id}", botHandler.Get)
 				r.Delete("/{id}", botHandler.Delete)
+				// WBS 2.7.6: Bot Control APIs — Start/Stop (close_position flag) ✓
+				r.Post("/{id}/start", botHandler.Start)
+				r.Post("/{id}/stop", botHandler.Stop)
 			})
 
 			// WBS 2.4.3: GET /market/symbols (24hr ticker — list + price + volume) ✓

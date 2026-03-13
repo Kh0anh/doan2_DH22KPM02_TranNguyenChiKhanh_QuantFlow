@@ -39,6 +39,13 @@ type BotRepository interface {
 	// Returns ErrBotStillRunning if the bot status is Running (409 constraint).
 	// Returns ErrNotFound when the bot does not exist or belongs to another user.
 	DeleteByID(ctx context.Context, botID, userID string) error
+
+	// FindRawByID retrieves the full BotInstance row (including StrategyVersionID
+	// and APIKeyID) for the given botID and userID.
+	// Returns (nil, nil) when the bot does not exist or belongs to another user.
+	// Used by BotLogic.StartBot and StopBot to rebuild bot config from the
+	// pinned strategy version (Task 2.7.6).
+	FindRawByID(ctx context.Context, botID, userID string) (*domain.BotInstance, error)
 }
 
 // Sentinel errors returned by BotRepository methods.
@@ -222,4 +229,24 @@ func (r *botRepository) DeleteByID(ctx context.Context, botID, userID string) er
 	}
 
 	return nil
+}
+
+// FindRawByID retrieves the full BotInstance row (all columns, including
+// StrategyVersionID and APIKeyID) for the given botID and userID.
+// Returns (nil, nil) when the bot does not exist or belongs to another user.
+//
+// Used by BotLogic.StartBot and BotLogic.StopBot to rebuild the bot goroutine
+// config from the pinned strategy version (Task 2.7.6, Data Integrity).
+func (r *botRepository) FindRawByID(ctx context.Context, botID, userID string) (*domain.BotInstance, error) {
+	var bot domain.BotInstance
+	err := r.db.WithContext(ctx).
+		Where("id = ? AND user_id = ?", botID, userID).
+		First(&bot).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("bot_repo: FindRawByID: %w", err)
+	}
+	return &bot, nil
 }

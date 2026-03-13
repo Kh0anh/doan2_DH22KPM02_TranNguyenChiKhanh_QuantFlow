@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -48,6 +49,12 @@ type StrategyRepository interface {
 	//   - (nil, ErrNotFound) — strategy not found or not owned by user.
 	//   - (nil, nil) — deletion successful.
 	DeleteByID(ctx context.Context, strategyID, userID string) (activeBotIDs []string, err error)
+
+	// FindVersionByID retrieves a specific strategy_versions row by its UUID.
+	// Returns (nil, nil) when the version does not exist.
+	// Used by BotLogic.StartBot to reload the pinned logic_json for bot restart
+	// (Task 2.7.6 — Data Integrity: use same snapshot version pinned at creation).
+	FindVersionByID(ctx context.Context, versionID string) (*domain.StrategyVersion, error)
 }
 
 type strategyRepository struct {
@@ -378,3 +385,23 @@ func (r *strategyRepository) DeleteByID(ctx context.Context, strategyID, userID 
 // errStrategyNotFoundRepo is a package-private sentinel used by DeleteByID
 // to signal "not found" without depending on the logic layer.
 var errStrategyNotFoundRepo = fmt.Errorf("strategy not found")
+
+// FindVersionByID retrieves a specific strategy_versions row by its UUID.
+// Returns (nil, nil) when the version does not exist.
+//
+// Used by BotLogic.StartBot to reload the pinned logic_json for the exact
+// strategy version snapshotted at bot creation time, ensuring Data Integrity
+// on bot restart (Task 2.7.6, api.yaml §POST /bots/{id}/start).
+func (r *strategyRepository) FindVersionByID(ctx context.Context, versionID string) (*domain.StrategyVersion, error) {
+	var sv domain.StrategyVersion
+	err := r.db.WithContext(ctx).
+		Where("id = ?", versionID).
+		First(&sv).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("strategy_repo: FindVersionByID: %w", err)
+	}
+	return &sv, nil
+}

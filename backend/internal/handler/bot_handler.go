@@ -221,3 +221,127 @@ func (h *BotHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		"message": "Bot deleted successfully.",
 	})
 }
+
+// Start handles POST /api/v1/bots/{id}/start.
+//
+// Restarts a stopped bot by rebuilding its goroutine from the pinned
+// strategy version stored at creation time (Data Integrity).
+//
+// Flow (WBS 2.7.6, api.yaml §POST /bots/{id}/start, SRS FR-RUN-06):
+//  1. Extract JWT claims from context.
+//  2. Read {id} path parameter.
+//  3. Delegate to BotLogic.StartBot.
+//  4. Return 200 { message, data: BotStatusUpdate }.
+//
+// Success              → 200  { message, data: { id, status, updated_at } }
+// Bot not found        → 404  BOT_NOT_FOUND
+// Bot already running  → 409  BOT_ALREADY_RUNNING
+// Auth ✗               → 401  UNAUTHORIZED
+// Server ✗             → 500  INTERNAL_ERROR
+func (h *BotHandler) Start(w http.ResponseWriter, r *http.Request) {
+	claims, ok := appMiddleware.ClaimsFromContext(r.Context())
+	if !ok {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "No active session.")
+		return
+	}
+
+	botID := chi.URLParam(r, "id")
+	if botID == "" {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "Bot ID is required.")
+		return
+	}
+
+	result, err := h.botLogic.StartBot(r.Context(), botID, claims.UserID)
+	if err != nil {
+		switch {
+		case errors.Is(err, logic.ErrBotNotFound):
+			response.Error(w, http.StatusNotFound, "BOT_NOT_FOUND", "Bot not found.")
+		case errors.Is(err, logic.ErrBotAlreadyRunning):
+			response.Error(w, http.StatusConflict, "BOT_ALREADY_RUNNING", "Bot is already in Running state.")
+		case errors.Is(err, logic.ErrBotAPIKeyNotConfigured), errors.Is(err, logic.ErrBotAPIKeyInvalid):
+			response.Error(w, http.StatusUnprocessableEntity, "EXCHANGE_NOT_CONFIGURED", "Exchange API key is not configured or not connected.")
+		case errors.Is(err, logic.ErrBotInvalidLogicJSON):
+			response.Error(w, http.StatusUnprocessableEntity, "INVALID_LOGIC_JSON", "Strategy logic is invalid or missing event trigger block.")
+		default:
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "An internal error occurred. Please try again later.")
+		}
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"message": "Bot started successfully.",
+		"data":    result,
+	})
+}
+
+// stopBotRequest is the optional JSON body for POST /bots/{id}/stop.
+type stopBotRequest struct {
+	// ClosePosition controls whether to close all Binance positions and cancel
+	// open orders before stopping the bot goroutine (api.yaml §StopBotRequest).
+	// Defaults to false when omitted — bot is stopped but positions are kept.
+	ClosePosition bool `json:"close_position"`
+}
+
+// Stop handles POST /api/v1/bots/{id}/stop.
+//
+// Stops a running bot. Supports two modes via the close_position flag:
+//   - false (default): stop goroutine only; Binance positions are untouched.
+//   - true: cancel open orders + close position, then stop goroutine.
+//
+// Flow (WBS 2.7.6, api.yaml §POST /bots/{id}/stop, SRS FR-RUN-06):
+//  1. Extract JWT claims from context.
+//  2. Read {id} path parameter.
+//  3. Decode optional JSON body; default close_position=false.
+//  4. Delegate to BotLogic.StopBot.
+//  5. Return 200 { message, data: BotStopResult }.
+//
+// Success          → 200  { message, data: { id, status, total_pnl, updated_at } }
+// Bot not found    → 404  BOT_NOT_FOUND
+// Bot not running  → 409  BOT_NOT_RUNNING
+// Auth ✗           → 401  UNAUTHORIZED
+// Server ✗         → 500  INTERNAL_ERROR
+func (h *BotHandler) Stop(w http.ResponseWriter, r *http.Request) {
+	claims, ok := appMiddleware.ClaimsFromContext(r.Context())
+	if !ok {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "No active session.")
+		return
+	}
+
+	botID := chi.URLParam(r, "id")
+	if botID == "" {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "Bot ID is required.")
+		return
+	}
+
+	// Decode optional body — if body is absent or empty, close_position defaults to false.
+	var req stopBotRequest
+	if r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			response.Error(w, http.StatusBadRequest, "INVALID_JSON_STRUCTURE", "Invalid JSON structure. Please check the request body format.")
+			return
+		}
+	}
+
+	result, err := h.botLogic.StopBot(r.Context(), botID, claims.UserID, req.ClosePosition)
+	if err != nil {
+		switch {
+		case errors.Is(err, logic.ErrBotNotFound):
+			response.Error(w, http.StatusNotFound, "BOT_NOT_FOUND", "Bot not found.")
+		case errors.Is(err, logic.ErrBotNotRunning):
+			response.Error(w, http.StatusConflict, "BOT_NOT_RUNNING", "Bot is not in Running state.")
+		default:
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "An internal error occurred. Please try again later.")
+		}
+		return
+	}
+
+	msg := "Bot stopped successfully."
+	if req.ClosePosition {
+		msg = "Bot stopped and position closed successfully."
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"message": msg,
+		"data":    result,
+	})
+}
