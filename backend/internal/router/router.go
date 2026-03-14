@@ -130,10 +130,13 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 			// WBS 2.4.1: Hybrid Data Sync — Binance WS + REST fallback, INSERT candles ✓
 			// CandleRepository and KlineSyncService are wired here and will be injected
 			// into MarketLogic (WBS 2.4.3-2.4.4) and BacktestLogic (WBS 2.6.1).
+			// NOTE: KlineSyncService.StartWatchedSymbols (1m only) is intentionally NOT
+			// called here — MarketTickerChannel (WBS 2.8.2) covers all 6 timeframes
+			// including 1m with the same INSERT + push responsibility. Duplicate streams
+			// for 1m would waste Binance WS connections and cause redundant DB writes
+			// (idempotent but wasteful). KlineSyncService.Subscribe() remains available
+			// for on-demand per-bot subscriptions in future tasks.
 			candleRepo := repository.NewCandleRepository(db)
-			klineSyncSvc := exchange.NewKlineSyncService(candleRepo, exchangeLimiter)
-			// WBS 2.4.1: subscribe to all watched symbols from WATCHED_SYMBOLS env on startup.
-			go klineSyncSvc.StartWatchedSymbols(ctx, cfg.WatchedSymbols)
 
 			// WBS 2.4.2: background worker that periodically detects and backfills
 			// missing candle ranges caused by WS disconnections or server restarts.
@@ -141,6 +144,14 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 			// idempotent inserts and respect the Binance IP weight cap.
 			gapFiller := exchange.NewGapFillerWorker(candleRepo, exchangeLimiter, cfg.WatchedSymbols)
 			go gapFiller.Run(ctx)
+
+			// WBS 2.8.2: Market Ticker Channel — real-time 24h ticker + multi-timeframe
+			// candle OHLCV events pushed to subscribed WebSocket clients.
+			// Closed candles (is_closed=true) are INSERT-ed into candles_data first,
+			// then fanned out. In-progress candles are pushed only (no DB write).
+			// ON CONFLICT DO NOTHING ensures safe coexistence with KlineSyncService.
+			marketTickerCh := appws.NewMarketTickerChannel(candleRepo, wsManager, slog.Default())
+			go marketTickerCh.StartWatchedSymbols(ctx, cfg.WatchedSymbols)
 
 			// WBS 2.7.1: Initialize Bot Manager and Bot Event Listener (two-phase init)
 			// for Live Trade bot orchestration. Task 2.7.5 wires the CRUD handlers below.
