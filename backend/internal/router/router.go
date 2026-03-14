@@ -15,6 +15,7 @@ import (
 	"github.com/kh0anh/quantflow/internal/logic"
 	appMiddleware "github.com/kh0anh/quantflow/internal/middleware"
 	"github.com/kh0anh/quantflow/internal/repository"
+	appws "github.com/kh0anh/quantflow/internal/websocket"
 	pkgcrypto "github.com/kh0anh/quantflow/pkg/crypto"
 	"github.com/kh0anh/quantflow/pkg/response"
 	"gorm.io/gorm"
@@ -46,6 +47,18 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 	// WBS 2.1.6: account profile management
 	accountLogic := logic.NewAccountLogic(userRepo)
 	accountHandler := handler.NewAccountHandler(accountLogic, cfg)
+
+	// WBS 2.8.1 — WebSocket Connection Manager.
+	// wsManager is constructed here (outside /api/v1) so it can be
+	// shared with the BotManager inside the /api/v1 closure AND mounted
+	// at the spec-compliant endpoint /v1/ws (websocket.md §1.1).
+	wsManager := appws.NewWSManager(slog.Default())
+	wsHandler := handler.NewWSHandler(wsManager, cfg.JWTSecret, slog.Default())
+
+	// Mount WebSocket endpoint at /v1/ws — matches websocket.md §1.1.
+	// Auth is self-contained in WSHandler (Close Code 4001 on failure),
+	// so no JWTAuth middleware is applied here.
+	r.Get("/v1/ws", wsHandler.ServeWS)
 
 	r.Route("/api/v1", func(r chi.Router) {
 
@@ -133,7 +146,7 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 			// for Live Trade bot orchestration. Task 2.7.5 wires the CRUD handlers below.
 			varRepo := repository.NewBotLifecycleVarRepository(db)
 			logRepo := repository.NewBotLogRepository(db)
-			botManager := bot.NewBotManager(db, slog.Default(), varRepo, logRepo, nil)
+			botManager := bot.NewBotManager(db, slog.Default(), varRepo, logRepo, wsManager)
 			botListener := bot.NewBotEventListener(ctx, botManager, slog.Default())
 			botManager.SetListener(botListener)
 
@@ -190,8 +203,7 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 			r.Route("/trades", func(r chi.Router) {
 			})
 
-			// TODO(dev): Mount WebSocket upgrade handler — GET /ws (WBS 2.8.1)
-			// r.Get("/ws", wsHandler.ServeWS)
+			// WBS 2.8.1: WebSocket upgrade handler mounted above (outside JWTAuth group).
 		})
 	})
 
