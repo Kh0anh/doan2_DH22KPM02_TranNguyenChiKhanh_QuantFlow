@@ -25,7 +25,7 @@ services:
     volumes:
       - quantflow-postgres-data:/var/lib/postgresql/data
       - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
-      - ./docs/database/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      - ./docs/database/schema.sql:/tmp/schema.sql:ro
     ports:
       - "5432:5432"  # Exposed for local DB client access (remove in production)
     networks:

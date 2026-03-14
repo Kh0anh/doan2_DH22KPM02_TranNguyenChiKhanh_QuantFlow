@@ -39,8 +39,8 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
 EOSQL
 
 # Load schema from mounted SQL file
-if [ -f /docker-entrypoint-initdb.d/schema.sql ]; then
-    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" < /docker-entrypoint-initdb.d/schema.sql
+if [ -f /tmp/schema.sql ]; then
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" < /tmp/schema.sql
     echo -e "${GREEN}✓ Schema created successfully (9 tables, 6 indexes)${NC}"
 else
     echo -e "${RED}✗ ERROR: schema.sql not found!${NC}"
