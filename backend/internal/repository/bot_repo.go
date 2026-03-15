@@ -46,6 +46,12 @@ type BotRepository interface {
 	// Used by BotLogic.StartBot and StopBot to rebuild bot config from the
 	// pinned strategy version (Task 2.7.6).
 	FindRawByID(ctx context.Context, botID, userID string) (*domain.BotInstance, error)
+
+	// FindRunningByIDs returns the BotInstance rows for the given botIDs that
+	// currently have status=Running. Used by BotLogic.GetRunningBotsSnapshot()
+	// (Task 2.8.4) to bulk-fetch metadata for the position_update polling loop.
+	// Returns an empty slice (not an error) when none of the IDs are found.
+	FindRunningByIDs(ctx context.Context, botIDs []string) ([]*domain.BotInstance, error)
 }
 
 // Sentinel errors returned by BotRepository methods.
@@ -249,4 +255,27 @@ func (r *botRepository) FindRawByID(ctx context.Context, botID, userID string) (
 		return nil, fmt.Errorf("bot_repo: FindRawByID: %w", err)
 	}
 	return &bot, nil
+}
+
+// FindRunningByIDs returns the BotInstance rows for the given botIDs.
+// Only rows with status=Running are returned — IDs that no longer match
+// (race condition: bot stopped between GetRunningBotIDs and this query) are
+// silently omitted.
+//
+// Returns an empty slice (not an error) when botIDs is empty or no rows match.
+// The result order is unspecified (consistent with BotManager.GetRunningBotIDs).
+//
+// Task 2.8.4 — position_update channel (GetRunningBotsSnapshot bulk fetch).
+func (r *botRepository) FindRunningByIDs(ctx context.Context, botIDs []string) ([]*domain.BotInstance, error) {
+	if len(botIDs) == 0 {
+		return []*domain.BotInstance{}, nil
+	}
+
+	var bots []*domain.BotInstance
+	if err := r.db.WithContext(ctx).
+		Where("id IN ? AND status = ?", botIDs, domain.BotStatusRunning).
+		Find(&bots).Error; err != nil {
+		return nil, fmt.Errorf("bot_repo: FindRunningByIDs: %w", err)
+	}
+	return bots, nil
 }

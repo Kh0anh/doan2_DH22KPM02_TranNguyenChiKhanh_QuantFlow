@@ -185,6 +185,34 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 				exchangeLimiter,
 			)
 			botHandler := handler.NewBotHandler(botLogic)
+
+			// WBS 2.8.4: Position Update Channel — polls Binance every 5s for all
+			// Running Bots and fans out position/PnL/open-orders to subscribed clients.
+			// A BotPositionFetcherFunc adapter bridges BotLogic.GetRunningBotsSnapshot()
+			// (returns []logic.RunningBotSnapshot) to the websocket.BotPositionFetcher
+			// interface (expects []appws.BotSnapshot) without creating an import cycle.
+			positionFetcher := appws.BotPositionFetcherFunc(func(ctx context.Context) ([]appws.BotSnapshot, error) {
+				snaps, err := botLogic.GetRunningBotsSnapshot(ctx)
+				if err != nil {
+					return nil, err
+				}
+				result := make([]appws.BotSnapshot, 0, len(snaps))
+				for _, s := range snaps {
+					result = append(result, appws.BotSnapshot{
+						BotID:    s.BotID,
+						UserID:   s.UserID,
+						BotName:  s.BotName,
+						Symbol:   s.Symbol,
+						Status:   s.Status,
+						TotalPnL: s.TotalPnL,
+						Proxy:    s.Proxy, // *exchange.BinanceProxy satisfies appws.PositionProxy
+					})
+				}
+				return result, nil
+			})
+			positionUpdateCh := appws.NewPositionUpdateChannel(wsManager, positionFetcher, slog.Default())
+			go positionUpdateCh.Start(ctx)
+
 			r.Route("/bots", func(r chi.Router) {
 				r.Get("/", botHandler.List)
 				r.Post("/", botHandler.Create)

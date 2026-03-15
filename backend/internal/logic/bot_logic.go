@@ -635,3 +635,95 @@ func (l *BotLogic) ListBotLogs(ctx context.Context, botID, userID string, limit 
 		HasMore:    hasMore,
 	}, nil
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  GetRunningBotsSnapshot — implements websocket.BotPositionFetcher (Task 2.8.4)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// GetRunningBotsSnapshot returns a snapshot of all currently Running Bots,
+// ready for the position_update polling channel.
+//
+// Flow:
+//  1. Obtain the list of in-memory Running Bot IDs from BotManager (O(n) read).
+//  2. Bulk-fetch the corresponding BotInstance rows from the DB using
+//     BotRepository.FindRunningByIDs. Bots that stopped between steps 1 and 2
+//     (benign race) are silently omitted from the result.
+//  3. For each BotInstance, resolve the user's api_key and build an authenticated
+//     *exchange.BinanceProxy. Bots whose api_key is missing or fails to decrypt
+//     are skipped with a Warn log — they must not block other bots.
+//  4. Return a []websocket.BotSnapshot ready for per-tick Binance REST calls.
+//
+// Returns an empty slice (not an error) when no bots are running or no api_keys
+// are resolvable.
+//
+// Task 2.8.4 — satisfies websocket.BotPositionFetcher interface.
+func (l *BotLogic) GetRunningBotsSnapshot(ctx context.Context) ([]RunningBotSnapshot, error) {
+	// Step 1: snapshot Running Bot IDs from in-memory BotManager.
+	botIDs := l.botManager.GetRunningBotIDs()
+	if len(botIDs) == 0 {
+		return []RunningBotSnapshot{}, nil
+	}
+
+	// Step 2: bulk-fetch BotInstance rows from DB.
+	instances, err := l.botRepo.FindRunningByIDs(ctx, botIDs)
+	if err != nil {
+		return nil, fmt.Errorf("bot_logic: GetRunningBotsSnapshot: find instances: %w", err)
+	}
+	if len(instances) == 0 {
+		return []RunningBotSnapshot{}, nil
+	}
+
+	// Step 3: build a BinanceProxy per unique user_id.
+	// Group instances by userID so we only call apiKeyRepo.FindByUserID once per user.
+	type userKey = string
+	apiKeyCache := make(map[userKey]*exchange.BinanceProxy)
+
+	result := make([]RunningBotSnapshot, 0, len(instances))
+	for _, inst := range instances {
+		proxy, cached := apiKeyCache[inst.UserID]
+		if !cached {
+			apiKey, keyErr := l.apiKeyRepo.FindByUserID(ctx, inst.UserID)
+			if keyErr != nil || apiKey == nil {
+				// api_key disappeared or user has no key — skip this bot.
+				continue
+			}
+			built, buildErr := exchange.NewBinanceProxy(apiKey.ApiKey, apiKey.SecretKeyEncrypted, l.aesKey, l.limiter)
+			if buildErr != nil {
+				// Decrypt failed — skip this bot, don't cache nil.
+				continue
+			}
+			proxy = built
+			apiKeyCache[inst.UserID] = proxy
+		}
+
+		result = append(result, RunningBotSnapshot{
+			BotID:    inst.ID,
+			UserID:   inst.UserID,
+			BotName:  inst.BotName,
+			Symbol:   inst.Symbol,
+			Status:   inst.Status,
+			TotalPnL: inst.TotalPnL,
+			Proxy:    proxy,
+		})
+	}
+
+	return result, nil
+}
+
+// RunningBotSnapshot is the per-bot data used by PositionUpdateChannel
+// for a single polling cycle.
+//
+// It satisfies websocket.BotSnapshot via Go structural typing — both types
+// have identical public fields. The concrete type lives in logic to avoid
+// importing the websocket package (clean architecture boundary).
+type RunningBotSnapshot struct {
+	BotID    string
+	UserID   string
+	BotName  string
+	Symbol   string
+	Status   string
+	TotalPnL string
+	// Proxy is the live BinanceProxy for fetching position and orders.
+	// Implements websocket.PositionProxy via Go structural typing.
+	Proxy *exchange.BinanceProxy
+}
