@@ -1,19 +1,18 @@
 "use client";
 
 /**
- * top-bar.tsx — Sticky application top bar (Task 3.1.2).
+ * top-bar.tsx — Sticky application top bar (Task 3.1.2, wired in 3.1.3).
  *
- * Left:  hamburger (mobile-only, opens sidebar) + QuantFlow logo + page title
- * Right: user info placeholder (will be wired to AuthContext in task 3.1.3)
+ * Left:  hamburger (mobile-only) + page title from pathname
+ * Right: username from AuthContext + logout button
  *
- * Page title is derived from pathname so active route is always reflected.
- *
- * WBS 3.1.2 · project_structure.md §3
+ * WBS 3.1.2 / 3.1.3 · project_structure.md §3
  */
 
-import { usePathname } from "next/navigation";
-import { Menu, TrendingUp, User } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { LogOut, Menu, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 
 // ─── Route → title map ────────────────────────────────────────────────────────
 
@@ -33,7 +32,6 @@ function getPageTitle(pathname: string): string {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface TopBarProps {
-  /** Called when mobile hamburger is tapped */
   onMenuClick: () => void;
   className?: string;
 }
@@ -42,7 +40,14 @@ interface TopBarProps {
 
 export function TopBar({ onMenuClick, className }: TopBarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, logout } = useAuth();
   const title = getPageTitle(pathname);
+
+  async function handleLogout() {
+    await logout();
+    router.replace("/login");
+  }
 
   return (
     <header
@@ -52,7 +57,6 @@ export function TopBar({ onMenuClick, className }: TopBarProps) {
       )}
     >
       {/* ── Left ── */}
-      {/* Hamburger: mobile only */}
       <button
         onClick={onMenuClick}
         className="flex md:hidden h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
@@ -61,27 +65,30 @@ export function TopBar({ onMenuClick, className }: TopBarProps) {
         <Menu className="h-5 w-5" />
       </button>
 
-      {/* Logo: visible on mobile (desktop logo is in sidebar) */}
       <div className="flex md:hidden items-center gap-2">
         <TrendingUp className="h-4 w-4 text-primary" />
       </div>
 
-      {/* Page title */}
       <span className="text-sm font-semibold text-foreground">{title}</span>
 
-      {/* ── Spacer ── */}
       <div className="flex-1" />
 
-      {/* ── Right — User placeholder ─────────────────────────────────────────
-          Will be enhanced in Task 3.1.3 with AuthContext data.
-      ────────────────────────────────────────────────────────────────────── */}
+      {/* ── Right — User info + Logout ── */}
       <div className="flex items-center gap-2">
-        <div
-          className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/30"
-          title="User account"
+        {user && (
+          <span className="hidden sm:block text-xs text-muted-foreground">
+            {user.username}
+          </span>
+        )}
+
+        <button
+          onClick={handleLogout}
+          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          title="Sign out"
+          aria-label="Sign out"
         >
-          <User className="h-4 w-4" />
-        </div>
+          <LogOut className="h-4 w-4" />
+        </button>
       </div>
     </header>
   );
