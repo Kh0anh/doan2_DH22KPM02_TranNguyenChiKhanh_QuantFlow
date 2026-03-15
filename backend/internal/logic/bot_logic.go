@@ -86,11 +86,13 @@ type BotLogic struct {
 	botManager   *bot.BotManager
 	aesKey       []byte                        // For decrypting API secret via ApiKeyLogic pattern
 	limiter      *exchange.ExchangeRateLimiter // For building BinanceProxy
+	baseURL      string                        // Binance Futures REST base URL override (empty = library default)
 }
 
 // NewBotLogic constructs a BotLogic with all required dependencies.
 //   - aesKey: 32-byte AES-256 key from pkgcrypto.DeriveKey(cfg.AESKey).
 //   - limiter: singleton ExchangeRateLimiter shared across all BinanceProxy instances.
+//   - baseURL: Binance Futures REST base URL override (empty = library default).
 func NewBotLogic(
 	botRepo repository.BotRepository,
 	strategyRepo repository.StrategyRepository,
@@ -100,6 +102,7 @@ func NewBotLogic(
 	botManager *bot.BotManager,
 	aesKey []byte,
 	limiter *exchange.ExchangeRateLimiter,
+	baseURL string,
 ) *BotLogic {
 	return &BotLogic{
 		botRepo:      botRepo,
@@ -110,6 +113,7 @@ func NewBotLogic(
 		botManager:   botManager,
 		aesKey:       aesKey,
 		limiter:      limiter,
+		baseURL:      baseURL,
 	}
 }
 
@@ -194,7 +198,7 @@ func (l *BotLogic) CreateBot(ctx context.Context, userID string, input CreateBot
 	}
 
 	// ─── Step 5: Build BinanceProxy ──────────────────────────────────────────
-	binanceProxy, err := exchange.NewBinanceProxy(apiKey.ApiKey, apiKey.SecretKeyEncrypted, l.aesKey, l.limiter)
+	binanceProxy, err := exchange.NewBinanceProxy(apiKey.ApiKey, apiKey.SecretKeyEncrypted, l.baseURL, l.aesKey, l.limiter)
 	if err != nil {
 		// Failed to decrypt or initialize exchange client.
 		// Update bot status to Error so user can debug via bot_logs.
@@ -427,7 +431,7 @@ func (l *BotLogic) StartBot(ctx context.Context, botID, userID string) (*BotStar
 	}
 
 	// ─── Step 6: Build BinanceProxy ──────────────────────────────────────────
-	binanceProxy, err := exchange.NewBinanceProxy(apiKey.ApiKey, apiKey.SecretKeyEncrypted, l.aesKey, l.limiter)
+	binanceProxy, err := exchange.NewBinanceProxy(apiKey.ApiKey, apiKey.SecretKeyEncrypted, l.baseURL, l.aesKey, l.limiter)
 	if err != nil {
 		return nil, fmt.Errorf("bot_logic: StartBot: build binance proxy: %w", err)
 	}
@@ -504,7 +508,7 @@ func (l *BotLogic) StopBot(ctx context.Context, botID, userID string, closePosit
 	if closePosition {
 		apiKey, apiErr := l.apiKeyRepo.FindByUserID(ctx, userID)
 		if apiErr == nil && apiKey != nil {
-			proxy, proxyErr := exchange.NewBinanceProxy(apiKey.ApiKey, apiKey.SecretKeyEncrypted, l.aesKey, l.limiter)
+			proxy, proxyErr := exchange.NewBinanceProxy(apiKey.ApiKey, apiKey.SecretKeyEncrypted, l.baseURL, l.aesKey, l.limiter)
 			if proxyErr == nil {
 				// Cancel all pending open orders first (ignore "no orders" error).
 				if cancelErr := proxy.CancelAllOrders(ctx, botInstance.Symbol); cancelErr != nil {
@@ -687,7 +691,7 @@ func (l *BotLogic) GetRunningBotsSnapshot(ctx context.Context) ([]RunningBotSnap
 				// api_key disappeared or user has no key — skip this bot.
 				continue
 			}
-			built, buildErr := exchange.NewBinanceProxy(apiKey.ApiKey, apiKey.SecretKeyEncrypted, l.aesKey, l.limiter)
+			built, buildErr := exchange.NewBinanceProxy(apiKey.ApiKey, apiKey.SecretKeyEncrypted, l.baseURL, l.aesKey, l.limiter)
 			if buildErr != nil {
 				// Decrypt failed — skip this bot, don't cache nil.
 				continue

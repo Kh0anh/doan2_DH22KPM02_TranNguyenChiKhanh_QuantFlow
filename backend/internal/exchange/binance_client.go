@@ -15,10 +15,17 @@ import (
 // NewFuturesClient constructs a go-binance Futures client authenticated with
 // the given API Key and Secret Key.
 //
+// baseURL overrides the default Binance Futures REST base URL when non-empty
+// (e.g. Binance testnet "https://testnet.binancefuture.com").
+// Pass an empty string to use the library default.
+//
 // Used internally for ping-verify during POST /exchange/api-keys (WBS 2.2.1).
-// For all other Binance calls, use NewBinanceProxy (WBS 2.2.4).
-func NewFuturesClient(apiKey, secretKey string) *futures.Client {
-	return futures.NewClient(apiKey, secretKey)
+func NewFuturesClient(apiKey, secretKey, baseURL string) *futures.Client {
+	client := futures.NewClient(apiKey, secretKey)
+	if baseURL != "" {
+		client.BaseURL = baseURL
+	}
+	return client
 }
 
 // ---------------------------------------------------------------------------
@@ -66,34 +73,33 @@ type BinanceProxy struct {
 // and immediately zeroing the plain-text byte slice to minimise the in-RAM
 // exposure window (SRS FR-CORE-01, NFR-SEC-01).
 //
-// The provided limiter is injected into the client's HTTP transport via
-// weightInterceptor — every Binance REST call made through this proxy is
-// automatically rate-gated and contributes to the adaptive feedback loop
-// (SRS FR-CORE-04, WBS 2.2.5).
+// baseURL overrides the Binance Futures REST base URL when non-empty.
+// Pass an empty string to use the go-binance library default.
 //
-// Parameters:
-//   - apiKey           — plain-text Binance Access Key (non-secret).
-//   - encryptedSecret  — AES-256-GCM ciphertext from the api_keys table.
-//   - aesKey           — 32-byte key from pkgcrypto.DeriveKey(cfg.AESKey).
-//   - limiter          — singleton ExchangeRateLimiter (shared across all proxies).
-func NewBinanceProxy(apiKey, encryptedSecret string, aesKey []byte, limiter *ExchangeRateLimiter) (*BinanceProxy, error) {
+// The provided limiter is injected into the client’s HTTP transport via
+// weightInterceptor — every Binance REST call made through this proxy is
+// automatically rate-gated (SRS FR-CORE-04, WBS 2.2.5).
+func NewBinanceProxy(apiKey, encryptedSecret, baseURL string, aesKey []byte, limiter *ExchangeRateLimiter) (*BinanceProxy, error) {
 	// Decrypt — the secret exists as plain-text only within this stack frame.
 	plaintext, err := pkgcrypto.Decrypt(encryptedSecret, aesKey)
 	if err != nil {
 		return nil, fmt.Errorf("exchange: NewBinanceProxy: decrypt secret: %w", err)
 	}
 
-	// Initialise the SDK client. go-binance copies the secret internally for
-	// HMAC-SHA256 signing; we never touch the signing logic directly.
+	// Initialise the SDK client.
 	client := futures.NewClient(apiKey, string(plaintext))
+
+	// Override base URL when configured (testnet / internal proxy).
+	if baseURL != "" {
+		client.BaseURL = baseURL
+	}
 
 	// Zero-out the decrypted bytes immediately after the SDK has consumed them.
 	for i := range plaintext {
 		plaintext[i] = 0
 	}
 
-	// Inject the rate-limiting transport. All 9 proxy methods are gated
-	// automatically — no per-method changes required (WBS 2.2.5).
+	// Inject the rate-limiting transport.
 	client.HTTPClient = &http.Client{
 		Transport: &weightInterceptor{
 			inner:   http.DefaultTransport,

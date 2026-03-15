@@ -99,7 +99,7 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 			// WBS 2.2.5: Token Bucket rate limiter — singleton shared by all BinanceProxy instances ✓
 			exchangeLimiter := exchange.NewExchangeRateLimiter()
 			apiKeyRepo := repository.NewApiKeyRepository(db)
-			apiKeyLogic := logic.NewApiKeyLogic(apiKeyRepo, pkgcrypto.DeriveKey(cfg.AESKey), exchangeLimiter)
+			apiKeyLogic := logic.NewApiKeyLogic(apiKeyRepo, pkgcrypto.DeriveKey(cfg.AESKey), exchangeLimiter, cfg.BinanceBaseURL)
 			apiKeyHandler := handler.NewApiKeyHandler(apiKeyLogic)
 			r.Route("/exchange", func(r chi.Router) {
 				r.Post("/api-keys", apiKeyHandler.Save)
@@ -183,6 +183,7 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 				botManager,
 				pkgcrypto.DeriveKey(cfg.AESKey),
 				exchangeLimiter,
+				cfg.BinanceBaseURL,
 			)
 			botHandler := handler.NewBotHandler(botLogic)
 

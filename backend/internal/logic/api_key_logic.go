@@ -51,14 +51,17 @@ type ApiKeyLogic struct {
 	repo    repository.ApiKeyRepository
 	aesKey  []byte                        // 32-byte AES-256 key from pkgcrypto.DeriveKey
 	limiter *exchange.ExchangeRateLimiter // singleton shared across all BinanceProxy instances
+	baseURL string                        // Binance Futures REST base URL override (empty = library default)
 }
 
 // NewApiKeyLogic constructs an ApiKeyLogic.
 //   - aesKey must be exactly 32 bytes — use pkgcrypto.DeriveKey(cfg.AESKey).
 //   - limiter is the singleton ExchangeRateLimiter created in router.go and
 //     shared by every BinanceProxy built via BuildProxy (WBS 2.2.5).
-func NewApiKeyLogic(repo repository.ApiKeyRepository, aesKey []byte, limiter *exchange.ExchangeRateLimiter) *ApiKeyLogic {
-	return &ApiKeyLogic{repo: repo, aesKey: aesKey, limiter: limiter}
+//   - baseURL overrides the Binance Futures REST base URL (e.g. testnet).
+//     Pass an empty string to use the go-binance library default.
+func NewApiKeyLogic(repo repository.ApiKeyRepository, aesKey []byte, limiter *exchange.ExchangeRateLimiter, baseURL string) *ApiKeyLogic {
+	return &ApiKeyLogic{repo: repo, aesKey: aesKey, limiter: limiter, baseURL: baseURL}
 }
 
 // SaveApiKey implements the full POST /exchange/api-keys business flow
@@ -85,7 +88,7 @@ func (l *ApiKeyLogic) SaveApiKey(ctx context.Context, userID string, input SaveA
 	//    go-binance NewGetAccountService() performs a signed HMAC-SHA256 request;
 	//    any API-level rejection is surfaced as a non-nil error.
 	//    The SecretKey is in RAM only during this call — never written to logs.
-	client := exchange.NewFuturesClient(input.ApiKey, input.SecretKey)
+	client := exchange.NewFuturesClient(input.ApiKey, input.SecretKey, l.baseURL)
 	if _, err := client.NewGetAccountService().Do(ctx); err != nil {
 		return nil, ErrExchangeValidationFailed
 	}
@@ -207,7 +210,7 @@ func (l *ApiKeyLogic) BuildProxy(ctx context.Context, userID string) (*exchange.
 		return nil, ErrAPIKeyNotConfigured
 	}
 
-	proxy, err := exchange.NewBinanceProxy(record.ApiKey, record.SecretKeyEncrypted, l.aesKey, l.limiter)
+	proxy, err := exchange.NewBinanceProxy(record.ApiKey, record.SecretKeyEncrypted, l.baseURL, l.aesKey, l.limiter)
 	if err != nil {
 		return nil, fmt.Errorf("api_key_logic: BuildProxy: %w", err)
 	}
