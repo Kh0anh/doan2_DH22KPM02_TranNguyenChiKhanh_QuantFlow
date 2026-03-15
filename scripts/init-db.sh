@@ -54,10 +54,10 @@ echo -e "${YELLOW}[2/3] Seeding default admin user...${NC}"
 
 # Default admin credentials (MUST be changed after first login)
 ADMIN_USERNAME="admin"
-# BCrypt hash of "Admin@2026" (bcrypt cost=10)
-# Generated with Go bcrypt: bcrypt.GenerateFromPassword([]byte("Admin@2026"), 10)
-# This is a real bcrypt hash for the password "Admin@2026"
-ADMIN_PASSWORD_HASH='$2a$10$N9qo8uLOickgx2ZMRZoEqe.LaL4sWJ6xJZl5EYp5/qTU6pZj.vfcS'
+# BCrypt hash of "123456" (bcrypt cost=10)
+# Generated with Go bcrypt: bcrypt.GenerateFromPassword([]byte("123456"), 10)
+# This is a real bcrypt hash for the password "123456"
+ADMIN_PASSWORD_HASH='$2a$12$6G7xM8YQXU8YvRsocM0rbu1xLkM/1m8Rlh6pNMJmG5p78X180peIe'
 
 # Note: In production, this hash should be generated dynamically
 # For development, we use a static hash for consistency
