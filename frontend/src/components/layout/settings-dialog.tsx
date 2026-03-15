@@ -109,8 +109,8 @@ function AccountTab({ onForceLogout }: { onForceLogout: () => void }) {
         result.code === "INVALID_CURRENT_PASSWORD"
           ? "Current password is incorrect."
           : result.code === "PASSWORD_MISMATCH"
-          ? "New passwords do not match."
-          : result.message || "An error occurred. Please try again.";
+            ? "New passwords do not match."
+            : result.message || "An error occurred. Please try again.";
       setError(msg);
     }
   }
@@ -167,6 +167,12 @@ function AccountTab({ onForceLogout }: { onForceLogout: () => void }) {
 
 // ─── Exchange API Key Tab ─────────────────────────────────────────────────────
 
+/** Show only the last `n` chars of a masked key, prefixed with "…" if longer. */
+function tailMask(mask: string, n = 42): string {
+  if (mask.length <= n) return mask;
+  return `\u2026${mask.slice(-n)}`;
+}
+
 function ExchangeKeyTab({ isVisible }: { isVisible: boolean }) {
   const [keyInfo, setKeyInfo] = useState<ApiKeyInfo | null | undefined>(undefined); // undefined = loading
   const [apiKey, setApiKey] = useState("");
@@ -207,8 +213,8 @@ function ExchangeKeyTab({ isVisible }: { isVisible: boolean }) {
         result.code === "EXCHANGE_VALIDATION_FAILED"
           ? "Binance rejected the key — invalid API key or missing Futures Trading permission."
           : result.code === "INVALID_KEY_FORMAT"
-          ? "Invalid API key format. Please check and try again."
-          : result.message || "An error occurred. Please try again.";
+            ? "Invalid API key format. Please check and try again."
+            : result.message || "An error occurred. Please try again.";
       setError(msg);
     }
   }
@@ -254,14 +260,9 @@ function ExchangeKeyTab({ isVisible }: { isVisible: boolean }) {
             <span className="text-xs text-muted-foreground">Exchange</span>
             <span className="text-xs font-medium text-foreground">{keyInfo.exchange}</span>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">API Key</span>
-            <span className="text-xs font-mono text-foreground">{keyInfo.api_key_masked}</span>
-          </div>
-          {/* Secret Key: never shown from server — write-only */}
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">Secret Key</span>
-            <span className="text-xs font-mono text-muted-foreground">••••••••••••••••••••</span>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">API Key</span>
+            <span className="text-xs font-mono text-foreground">{tailMask(keyInfo.api_key_masked)}</span>
           </div>
         </div>
       ) : (
