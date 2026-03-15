@@ -29,8 +29,8 @@
 
 | Môi trường    | Base URI                                |
 | :------------ | :-------------------------------------- |
-| Development   | `ws://localhost:8080/v1/ws`             |
-| Production    | `wss://api.quantflow.com/v1/ws`         |
+| Development   | `ws://localhost:8080/ws/v1`             |
+| Production    | `wss://api.quantflow.com/ws/v1`         |
 
 ---
 
@@ -43,7 +43,7 @@ Kết nối WebSocket yêu cầu xác thực danh tính người dùng thông qu
 Client gửi JWT Token dưới dạng query parameter `token` khi thiết lập kết nối:
 
 ```
-wss://api.quantflow.com/v1/ws?token=<JWT_TOKEN>
+wss://api.quantflow.com/ws/v1?token=<JWT_TOKEN>
 ```
 
 #### Phương thức 2 — HttpOnly Cookie

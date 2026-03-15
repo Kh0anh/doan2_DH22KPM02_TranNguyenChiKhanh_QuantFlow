@@ -2,13 +2,13 @@ package handler
 
 // ws_handler.go — WebSocket upgrade handler (Task 2.8.1).
 //
-// WSHandler upgrades an HTTP GET /api/v1/ws request to a WebSocket connection
+// WSHandler upgrades an HTTP GET /ws/v1 request to a WebSocket connection
 // after authenticating the caller via JWT.
 //
 // ─── Authentication Flow ─────────────────────────────────────────────────────
 //
 // The handler checks for a JWT token using two methods, in order:
-//  1. Query parameter: GET /v1/ws?token=<JWT>
+//  1. Query parameter: GET /ws/v1?token=<JWT>
 //  2. HttpOnly Cookie: automatically sent by the browser during WS handshake.
 //
 // If no valid token is found the handler writes a Close frame with code 4001
@@ -79,7 +79,7 @@ func NewWSHandler(manager *appws.WSManager, jwtSecret string, logger *slog.Logge
 	}
 }
 
-// ServeWS handles GET /api/v1/ws.
+// ServeWS handles GET /ws/v1.
 //
 // Flow:
 //  1. Extract JWT token from query param "token" → fallback to cookie "token".

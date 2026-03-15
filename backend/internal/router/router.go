@@ -51,14 +51,14 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 	// WBS 2.8.1 — WebSocket Connection Manager.
 	// wsManager is constructed here (outside /api/v1) so it can be
 	// shared with the BotManager inside the /api/v1 closure AND mounted
-	// at the spec-compliant endpoint /v1/ws (websocket.md §1.1).
+	// at the spec-compliant endpoint /ws/v1 (websocket.md §1.1).
 	wsManager := appws.NewWSManager(slog.Default())
 	wsHandler := handler.NewWSHandler(wsManager, cfg.JWTSecret, slog.Default())
 
-	// Mount WebSocket endpoint at /v1/ws — matches websocket.md §1.1.
+	// Mount WebSocket endpoint at /ws/v1 — matches websocket.md §1.1.
 	// Auth is self-contained in WSHandler (Close Code 4001 on failure),
 	// so no JWTAuth middleware is applied here.
-	r.Get("/v1/ws", wsHandler.ServeWS)
+	r.Get("/ws/v1", wsHandler.ServeWS)
 
 	r.Route("/api/v1", func(r chi.Router) {
 
@@ -247,7 +247,6 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 				r.Get("/", tradeHandler.List)
 				r.Get("/export", tradeHandler.Export)
 			})
-
 
 			// WBS 2.8.1: WebSocket upgrade handler mounted above (outside JWTAuth group).
 		})
