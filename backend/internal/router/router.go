@@ -239,8 +239,15 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 			})
 
 			// TODO(dev): Mount trade history handlers — GET /trades, GET /trades/export (WBS 2.8.5)
+			// WBS 2.8.5: Trade History APIs — GET /trades (cursor + multi-filter) + GET /trades/export CSV.
+			tradeRepo := repository.NewTradeRepository(db)
+			tradeLogic := logic.NewTradeLogic(tradeRepo)
+			tradeHandler := handler.NewTradeHandler(tradeLogic)
 			r.Route("/trades", func(r chi.Router) {
+				r.Get("/", tradeHandler.List)
+				r.Get("/export", tradeHandler.Export)
 			})
+
 
 			// WBS 2.8.1: WebSocket upgrade handler mounted above (outside JWTAuth group).
 		})
