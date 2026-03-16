@@ -60,6 +60,9 @@ export function useAuth(): AuthContextValue {
 /** 23 hours in ms — safe margin before the 24h JWT expires. */
 const REFRESH_INTERVAL_MS = 23 * 60 * 60 * 1000;
 
+/** Retry delay (30s) before giving up after a failed refresh attempt. */
+const REFRESH_RETRY_MS = 30_000;
+
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -70,11 +73,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Keep a ref to the refresh timer so we can clear it on logout/unmount.
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Stable ref to router so scheduleRefresh never depends on it directly.
+  // This prevents timer leak caused by Next.js router object recreation.
+  const routerRef = useRef(router);
+  useEffect(() => { routerRef.current = router; }, [router]);
+
   // ── Refresh logic ───────────────────────────────────────────────────────────
   /**
    * scheduleRefresh — sets a 23h timer to call /auth/refresh.
-   * If refresh succeeds, reschedule. If it fails (401), the session
-   * has expired: clear user and redirect to /login.
+   * If refresh succeeds, reschedule. If it fails, retry once after 30s
+   * before forcing re-login (tolerates transient network errors).
    */
   const scheduleRefresh = useCallback(() => {
     // Clear any existing timer before scheduling a new one.
@@ -86,12 +94,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Token rotated successfully — schedule the next refresh.
         scheduleRefresh();
       } else {
-        // Token expired or invalid — force re-login.
-        setUser(null);
-        router.replace("/login");
+        // First failure — retry once after 30s to tolerate transient errors.
+        refreshTimerRef.current = setTimeout(async () => {
+          const retry = await authRefresh();
+          if (retry.ok) {
+            scheduleRefresh();
+          } else {
+            // Genuinely expired — force re-login.
+            setUser(null);
+            routerRef.current.replace("/login");
+          }
+        }, REFRESH_RETRY_MS);
       }
     }, REFRESH_INTERVAL_MS);
-  }, [router]);
+  }, []); // no deps — uses routerRef for stable access
 
   // ── App-init: validate session ──────────────────────────────────────────────
   useEffect(() => {
@@ -105,12 +121,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (result.ok) {
         setUser(result.user);
         scheduleRefresh();
-      } else {
-        // No valid session — only redirect if we're not already on /login.
+      } else if (result.reason === "unauthorized") {
+        // Genuine 401/403 — session truly expired → redirect to login.
         if (!window.location.pathname.startsWith("/login")) {
-          router.replace("/login");
+          routerRef.current.replace("/login");
         }
       }
+      // else: network_error — silently keep user on current page.
+      // The refresh timer (if previously scheduled) will retry later.
 
       setIsLoading(false);
     })();
@@ -138,8 +156,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Clear local user state and redirect.
     setUser(null);
-    router.replace("/login");
-  }, [router]);
+    routerRef.current.replace("/login");
+  }, []);
 
   // ── Context value ──────────────────────────────────────────────────────────
   const value: AuthContextValue = {

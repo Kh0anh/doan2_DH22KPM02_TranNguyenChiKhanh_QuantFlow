@@ -68,11 +68,15 @@ export async function authLogin(
 
 export type AuthMeResult =
   | { ok: true; user: UserProfile }
-  | { ok: false };
+  | { ok: false; reason: "unauthorized" | "network_error" };
 
 /**
  * authMe — GET /api/v1/auth/me.
  * Called on app init to validate the session cookie and hydrate user state.
+ *
+ * Returns `reason: "unauthorized"` for 401 (session truly expired) and
+ * `reason: "network_error"` for fetch failures / 5xx so the caller can
+ * decide whether to redirect or silently retry.
  */
 export async function authMe(): Promise<AuthMeResult> {
   try {
@@ -80,11 +84,15 @@ export async function authMe(): Promise<AuthMeResult> {
       method: "GET",
       credentials: "include",
     });
-    if (!res.ok) return { ok: false };
+    if (!res.ok) {
+      // 401/403 = session genuinely invalid; anything else is transient
+      const isAuthError = res.status === 401 || res.status === 403;
+      return { ok: false, reason: isAuthError ? "unauthorized" : "network_error" };
+    }
     const data = await res.json();
     return { ok: true, user: data.data.user as UserProfile };
   } catch {
-    return { ok: false };
+    return { ok: false, reason: "network_error" };
   }
 }
 
