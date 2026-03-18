@@ -1,0 +1,329 @@
+/* ============================================================
+   QuantFlow Design System — globals.css
+   Task: F-0.1 — Setup Design System
+   Branch: feature/frontend-foundation
+   ============================================================
+   Nền tảng thiết kế cho trading platform dark theme.
+   - TailwindCSS 4 imports
+   - Google Fonts (Inter + JetBrains Mono)
+   - CSS custom properties (colors, typography, spacing)
+   - shadcn/ui theme variables
+   - Utility classes (price-up, price-down, glassmorphism)
+   ============================================================ */
+
+/* ─── 1. TailwindCSS 4 + Animation Imports ─────────────────── */
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* ─── 2. Google Fonts ───────────────────────────────────────── */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+/* ─── 3. Dark Mode Variant (TailwindCSS 4) ──────────────────── */
+@custom-variant dark (&:is(.dark *));
+
+/* ─── 4. Tailwind Theme Registration ────────────────────────── */
+@theme inline {
+  /* — Color Palette — */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* — QuantFlow Accent Colors — */
+  --color-accent-green: var(--accent-green);
+  --color-accent-red: var(--accent-red);
+  --color-accent-yellow: var(--accent-yellow);
+  --color-accent-blue: var(--accent-blue);
+  --color-accent-purple: var(--accent-purple);
+
+  /* — Charts — */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* — Sidebar — */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* — Border Radius — */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* — Typography — */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
+
+  /* — Layout Tokens — */
+  --spacing-sidebar: var(--sidebar-width);
+  --spacing-topbar: var(--topbar-height);
+
+  /* — Animation — */
+  --animate-price-flash: price-flash 600ms ease-out;
+  --animate-blink: blink 1s ease-in-out infinite;
+  --animate-slide-in: slide-in 200ms ease-out;
+}
+
+/* ─── 5. CSS Custom Properties — Dark Theme (default) ───────── */
+:root {
+  /* === QuantFlow Design Tokens (frontend_structure.md §4) === */
+
+  /* — Core Colors — */
+  --background:       oklch(0.12 0.02 280);    /* #0a0a0f */
+  --foreground:       oklch(0.92 0.01 280);    /* #e4e4ef */
+  --surface:          oklch(0.15 0.02 280);    /* #12121a */
+  --surface-hover:    oklch(0.19 0.03 270);    /* #1a1a2e */
+
+  /* — shadcn/ui Semantic Colors — */
+  --card:             oklch(0.15 0.02 280);    /* surface */
+  --card-foreground:  oklch(0.92 0.01 280);    /* foreground */
+  --popover:          oklch(0.15 0.02 280);    /* surface */
+  --popover-foreground: oklch(0.92 0.01 280);  /* foreground */
+
+  --primary:          oklch(0.55 0.25 265);    /* accent-blue #3742fa */
+  --primary-foreground: oklch(0.98 0.00 0);    /* white */
+  --secondary:        oklch(0.19 0.03 270);    /* surface-hover */
+  --secondary-foreground: oklch(0.92 0.01 280);
+
+  --muted:            oklch(0.19 0.03 270);    /* surface-hover */
+  --muted-foreground: oklch(0.62 0.03 280);   /* text-secondary #8888a0 */
+
+  --accent:           oklch(0.19 0.03 270);
+  --accent-foreground: oklch(0.92 0.01 280);
+
+  --destructive:      oklch(0.60 0.22 20);     /* accent-red #ff4757 */
+  --destructive-foreground: oklch(0.98 0.00 0);
+
+  --border:           oklch(0.25 0.03 270);    /* #2a2a3e */
+  --input:            oklch(0.25 0.03 270);    /* border color */
+  --ring:             oklch(0.55 0.25 265);    /* primary */
+
+  /* — QuantFlow Trading Accents — */
+  --accent-green:     oklch(0.77 0.17 170);    /* #00d4aa — Profit/Long/Success */
+  --accent-red:       oklch(0.60 0.22 20);     /* #ff4757 — Loss/Short/Error */
+  --accent-yellow:    oklch(0.75 0.17 70);     /* #ffa502 — Warning/Reconnecting */
+  --accent-blue:      oklch(0.55 0.25 265);    /* #3742fa — Primary Action */
+  --accent-purple:    oklch(0.55 0.20 295);    /* #7c5ce0 — Highlight/Active */
+
+  /* — Text Colors — */
+  --text-primary:     oklch(0.92 0.01 280);    /* #e4e4ef */
+  --text-secondary:   oklch(0.62 0.03 280);    /* #8888a0 */
+
+  /* — Charts — */
+  --chart-1: oklch(0.77 0.17 170);   /* green */
+  --chart-2: oklch(0.60 0.22 20);    /* red */
+  --chart-3: oklch(0.55 0.25 265);   /* blue */
+  --chart-4: oklch(0.75 0.17 70);    /* yellow */
+  --chart-5: oklch(0.55 0.20 295);   /* purple */
+
+  /* — Sidebar — */
+  --sidebar:                   oklch(0.13 0.02 280);
+  --sidebar-foreground:        oklch(0.62 0.03 280);
+  --sidebar-primary:           oklch(0.55 0.25 265);
+  --sidebar-primary-foreground: oklch(0.98 0.00 0);
+  --sidebar-accent:            oklch(0.19 0.03 270);
+  --sidebar-accent-foreground: oklch(0.92 0.01 280);
+  --sidebar-border:            oklch(0.25 0.03 270);
+  --sidebar-ring:              oklch(0.55 0.25 265);
+
+  /* — Typography Sizes — */
+  --font-size-xs:     0.75rem;    /* 12px — Labels nhỏ */
+  --font-size-sm:     0.8125rem;  /* 13px — Table cells, sidebar */
+  --font-size-base:   0.875rem;   /* 14px — Body text */
+  --font-size-lg:     1rem;       /* 16px — Headings */
+  --font-size-xl:     1.25rem;    /* 20px — Page titles */
+
+  /* — Layout — */
+  --sidebar-width:    64px;
+  --topbar-height:    56px;
+  --panel-min-height: 200px;
+  --radius:           0.5rem;     /* 8px */
+  --transition:       150ms ease;
+}
+
+/* ─── 6. Base Styles ────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  border-color: var(--border);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* — Custom Scrollbar (dark theme) — */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-secondary);
+}
+
+/* — Text Selection — */
+::selection {
+  background-color: oklch(0.55 0.25 265 / 0.3);  /* primary, 30% opacity */
+  color: var(--foreground);
+}
+
+/* ─── 7. Utility Classes ────────────────────────────────────── */
+
+/* — Trading Price Colors — */
+.price-up {
+  color: var(--accent-green);
+  font-variant-numeric: tabular-nums;
+}
+
+.price-down {
+  color: var(--accent-red);
+  font-variant-numeric: tabular-nums;
+}
+
+/* — Price Flash Animation (khi giá thay đổi) — */
+.price-flash-up {
+  animation: var(--animate-price-flash);
+  color: var(--accent-green);
+}
+
+.price-flash-down {
+  animation: var(--animate-price-flash);
+  color: var(--accent-red);
+}
+
+@keyframes price-flash {
+  0% {
+    opacity: 1;
+    background-color: oklch(0.77 0.17 170 / 0.2);
+  }
+  100% {
+    opacity: 1;
+    background-color: transparent;
+  }
+}
+
+/* — Blink Animation (WebSocket reconnecting indicator) — */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* — Slide In Animation (panel/dialog entrance) — */
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* — Glassmorphism Effect (Login card, dialogs) — */
+.glassmorphism {
+  background: oklch(0.15 0.02 280 / 0.6);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  border: 1px solid oklch(0.30 0.03 270 / 0.4);
+  box-shadow:
+    0 8px 32px oklch(0 0 0 / 0.3),
+    inset 0 1px 0 oklch(1 0 0 / 0.05);
+}
+
+/* — Tabular Numbers (cho bảng giá, số liệu tài chính) — */
+.font-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* — Trading Status Badges — */
+.status-running {
+  color: var(--accent-green);
+}
+
+.status-stopped {
+  color: var(--text-secondary);
+}
+
+.status-error {
+  color: var(--accent-red);
+}
+
+.status-reconnecting {
+  color: var(--accent-yellow);
+  animation: var(--animate-blink);
+}
+
+/* — Terminal / Log Console — */
+.terminal-bg {
+  background-color: oklch(0.10 0.01 280);  /* #0d1117 */
+  color: var(--accent-green);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+/* ─── 8. Focus & Interaction States ─────────────────────────── */
+
+/* — Focus Visible (accessibility) — */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* — Disabled State — */
+[disabled],
+.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
