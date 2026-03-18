@@ -2,9 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-<<<<<<< Updated upstream
-=======
-
+  
   // Turbopack is the default dev bundler in Next.js 16+.
   // An empty config silences the "no turbopack config" error while
   // keeping the webpack block below for production builds.
@@ -25,7 +23,6 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
->>>>>>> Stashed changes
 };
 
 export default nextConfig;
