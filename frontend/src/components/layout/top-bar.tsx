@@ -1,17 +1,18 @@
 /**
  * [3.1.2] TopBar — 48px application header.
+ * [3.1.3] Username and logout sourced from AuthContext (useAuth).
  *
  * Left:  QuantFlow logo mark + wordmark
  * Right: User dropdown (Avatar initials + username + Settings + Logout)
  *
- * Logout: POST /api/v1/auth/logout → router.replace('/login')
+ * Logout: delegates to logout() from AuthContext
  * Settings: Calls openSettings() from useUIStore → opens Settings Dialog (Task 3.1.4)
  */
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Settings, LogOut, Loader2 } from "lucide-react";
+import { useAuth } from "@/lib/auth";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,27 +40,20 @@ function getInitials(name: string): string {
 // TopBar component
 // ---------------------------------------------------------------------------
 
-interface TopBarProps {
-  /** Username to display in the user menu. Defaults to "Admin" (replaced by Task 3.1.3). */
-  username?: string;
-}
-
-export function TopBar({ username = "Admin" }: TopBarProps) {
-  const router = useRouter();
+export function TopBar() {
+  const { user, logout } = useAuth();
   const openSettings = useUIStore((s) => s.openSettings);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const username = user?.username ?? "";
 
   async function handleLogout() {
     if (isLoggingOut) return;
     setIsLoggingOut(true);
     try {
-      await fetch("/api/v1/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      });
+      await logout();
     } finally {
-      // Always redirect to login regardless of response
-      router.replace("/login");
+      setIsLoggingOut(false);
     }
   }
 
