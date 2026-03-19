@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { EditorTab } from "@/types";
+import { v4 as uuidv4 } from "uuid";
 
 /**
  * [3.2.7] GlobalEditorStore — Multi-tab Editor state.
@@ -22,10 +23,13 @@ import { EditorTab } from "@/types";
  *   Blockly XML NOT persisted — reconstructed from API on re-open.
  */
 
+const MAX_TABS = 7;
+
 interface EditorStoreState {
   tabs: EditorTab[];
   activeTabId: string | null;
   openTab: (strategyId: string, strategyName: string) => void;
+  openNewTab: () => void;
   closeTab: (tabId: string) => void;
   setActiveTab: (tabId: string) => void;
   markDirty: (tabId: string) => void;
@@ -46,6 +50,8 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       return;
     }
     // TODO [3.2.7]: enforce MAX_TABS = 7, show toast warning if exceeded
+    // TODO [3.2.7]: enforce MAX_TABS = 7, show toast warning if exceeded
+    if (tabs.length >= MAX_TABS) return;
     const newTab: EditorTab = {
       id: strategyId,
       strategyId,
@@ -58,8 +64,25 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
     }));
   },
 
+  openNewTab: () => {
+    const { tabs } = get();
+    // TODO [3.2.7]: show toast warning when limit reached
+    if (tabs.length >= MAX_TABS) return;
+    const id = uuidv4();
+    const newTab: EditorTab = {
+      id,
+      strategyId: null,
+      name: "Chiến lược mới",
+      isDirty: false,
+    };
+    set((state) => ({
+      tabs: [...state.tabs, newTab],
+      activeTabId: newTab.id,
+    }));
+  },
+
   closeTab: (tabId: string) => {
-    // TODO [3.2.9]: check isDirty → show CloseTabDialog before closing
+    // NOTE [3.2.9]: isDirty check + CloseTabDialog will be wired in task 3.2.9
     set((state) => {
       const filtered = state.tabs.filter((t) => t.id !== tabId);
       const newActive =

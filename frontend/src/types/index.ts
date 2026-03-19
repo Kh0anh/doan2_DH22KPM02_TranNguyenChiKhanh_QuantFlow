@@ -138,6 +138,21 @@ export interface BotLog {
 // -----------------------------------------------------------------
 // Trade History
 // -----------------------------------------------------------------
+// Editor (Multi-tab Strategy Editor — v2)
+// -----------------------------------------------------------------
+
+/**
+ * Represents a single open tab in the Multi-tab Strategy Editor.
+ * workspaceXml is NOT persisted to sessionStorage — reconstructed from API on re-open.
+ */
+export interface EditorTab {
+  id: string;                   // unique tab ID (= strategyId for existing, uuid for new)
+  strategyId: string | null;    // null = new unsaved strategy
+  name: string;                 // display name (max 20 chars)
+  isDirty: boolean;             // has unsaved changes?
+}
+
+// -----------------------------------------------------------------
 
 export type TradeSide = "Buy" | "Sell";
 export type TradeOrderType = "Market" | "Limit";
@@ -193,16 +208,7 @@ export interface BacktestResult {
   createdAt: string;
 }
 
-// -----------------------------------------------------------------
-// Multi-tab Editor (Zustand — Task 3.2.7)
-// -----------------------------------------------------------------
-
-export interface EditorTab {
-  id: string;           // Same as strategyId
-  strategyId: string;
-  name: string;         // Truncated to 20 chars
-  isDirty: boolean;     // True when workspace has unsaved changes
-}
+// (EditorTab is defined above in the Editor section)
 
 // -----------------------------------------------------------------
 // WebSocket message types (channels)
