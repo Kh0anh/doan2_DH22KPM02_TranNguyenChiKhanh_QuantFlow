@@ -1,5 +1,6 @@
 /**
  * [3.2.1] EditorShell — Outer container for the Multi-tab Strategy Editor.
+ * [3.2.4] Save/Load Strategy via API wired into this component.
  *
  * Architecture:
  *   ┌──────────────────────────────────────────────────────────┐
@@ -27,6 +28,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import * as Blockly from "blockly";
 import {
   LayoutGrid,
   Plus,
@@ -36,6 +38,7 @@ import {
 import { toast } from "sonner";
 import { EditorControlBar } from "./editor-control-bar";
 import { useEditorStore } from "@/store/editor-store";
+import { useEditorTab } from "@/lib/hooks/use-editor-tab";
 import type { EditorTab } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -189,26 +192,33 @@ export function EditorShell() {
   } = useEditorStore();
 
   // Registry: tabId → WorkspaceSvg (for undo/redo/zoom calls in ControlBar)
-  const workspacesRef = useRef<Map<string, WorkspaceFacade>>(new Map());
+  // Cast-safe: WorkspaceFacade is a subset of Blockly.WorkspaceSvg
+  const workspacesRef = useRef<Map<string, Blockly.WorkspaceSvg>>(new Map());
 
   // Active workspace exposed to EditorControlBar
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceFacade | null>(null);
 
-  // Save in-progress state (per tab) — full save logic wired in Task 3.2.4
-  const [savingTabId, setSavingTabId] = useState<string | null>(null);
+  // [3.2.4] Save/Load strategy hook — wired to the workspace registry
+  const { saveStrategy, loadStrategy, isSaving } = useEditorTab(workspacesRef);
 
   // ------------------------------------------------------------------
   // WorkspaceSvg lifecycle callbacks (stable via useCallback)
   // ------------------------------------------------------------------
   const handleWorkspaceReady = useCallback(
     (tabId: string, workspace: WorkspaceFacade) => {
-      workspacesRef.current.set(tabId, workspace);
+      workspacesRef.current.set(tabId, workspace as Blockly.WorkspaceSvg);
       // If this is the currently active tab, expose it to the control bar
       if (tabId === activeTabId) {
         setActiveWorkspace(workspace);
       }
+
+      // [3.2.4] Auto-load strategy data if tab has a strategyId
+      const tab = tabs.find((t) => t.id === tabId);
+      if (tab?.strategyId) {
+        loadStrategy(tabId, tab.strategyId);
+      }
     },
-    [activeTabId]
+    [activeTabId, tabs, loadStrategy]
   );
 
   const handleWorkspaceDestroy = useCallback((tabId: string) => {
@@ -247,22 +257,12 @@ export function EditorShell() {
   );
 
   // ------------------------------------------------------------------
-  // Save handler (stub — full serialization in Task 3.2.4)
+  // Save handler — [3.2.4] wired to real save via useEditorTab
   // ------------------------------------------------------------------
   const handleSave = useCallback(async () => {
     if (!activeTabId) return;
-    setSavingTabId(activeTabId);
-    try {
-      // TODO [3.2.4]: serialize workspace XML → POST /api/v1/strategies
-      await new Promise((resolve) => setTimeout(resolve, 500)); // placeholder
-      markClean(activeTabId);
-      toast.success("Đã lưu chiến lược.");
-    } catch {
-      toast.error("Lưu thất bại. Vui lòng thử lại.");
-    } finally {
-      setSavingTabId(null);
-    }
-  }, [activeTabId, markClean]);
+    await saveStrategy(activeTabId);
+  }, [activeTabId, saveStrategy]);
 
   // ------------------------------------------------------------------
   // Export handler (stub — full implementation in Task 3.2.5)
@@ -305,7 +305,7 @@ export function EditorShell() {
       <EditorControlBar
         activeTab={activeTab}
         activeWorkspace={activeWorkspace}
-        isSaving={activeTabId !== null && savingTabId === activeTabId}
+        isSaving={isSaving}
         onSave={handleSave}
         onExport={handleExport}
         onNameChange={handleNameChange}

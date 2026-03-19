@@ -20,19 +20,13 @@ import * as Blockly from "blockly";
 import * as EnMsg from "blockly/msg/en";
 // [3.2.2] Register all 26 custom blocks before any Blockly.inject() call
 import "@/lib/blockly/blocks";
+// [3.2.3] Toolbox configuration — 6 categorized groups
+import { QUANTFLOW_TOOLBOX } from "./toolbox-config";
 
 // ---------------------------------------------------------------------------
 // Locale — set once at module load (client-only, safe)
 // ---------------------------------------------------------------------------
-Blockly.setLocale(EnMsg);
-
-// ---------------------------------------------------------------------------
-// Minimal empty toolbox — custom blocks injected in Task 3.2.3
-// ---------------------------------------------------------------------------
-const EMPTY_TOOLBOX: Blockly.utils.toolbox.ToolboxDefinition = {
-  kind: "categoryToolbox",
-  contents: [],
-};
+Blockly.setLocale(EnMsg as unknown as { [key: string]: string });
 
 // ---------------------------------------------------------------------------
 // Custom dark theme matching QuantFlow palette
@@ -59,7 +53,7 @@ const QUANTFLOW_THEME = Blockly.Theme.defineTheme("quantflow-dark", {
 // Blockly inject options
 // ---------------------------------------------------------------------------
 const INJECT_OPTIONS: Blockly.BlocklyOptions = {
-  toolbox: EMPTY_TOOLBOX,
+  toolbox: QUANTFLOW_TOOLBOX,
   zoom: {
     controls: false, // custom zoom buttons in EditorControlBar
     wheel: true,
