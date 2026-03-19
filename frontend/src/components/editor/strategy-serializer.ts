@@ -99,3 +99,51 @@ export function hasEventTriggerBlock(state: BlocklyJsonState): boolean {
     block.type ? EVENT_TRIGGER_TYPES.has(block.type) : false,
   );
 }
+
+// -----------------------------------------------------------------
+// Export: Workspace → .json file download (Blob API)
+// -----------------------------------------------------------------
+
+/**
+ * Slugify a strategy name into a safe filename base.
+ * Example: "EMA Crossover 15m" → "ema-crossover-15m"
+ */
+function slugifyFilename(name: string): string {
+  let slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!slug) slug = "strategy";
+  return slug;
+}
+
+/**
+ * Export a Blockly workspace state to a downloadable `.json` file.
+ *
+ * Uses the Blob API + URL.createObjectURL to trigger a browser-side
+ * file download. No API call is made — this is purely client-side.
+ *
+ * SRS FR-DESIGN-12: "Xuất chiến lược ra file JSON"
+ * frontend_flows.md: "Serialize → Blob download .json. Không đánh dấu clean"
+ *
+ * @param state — JSON state from serializeWorkspace()
+ * @param strategyName — human-readable name (used to generate filename)
+ */
+export function exportToJsonFile(
+  state: BlocklyJsonState,
+  strategyName: string,
+): void {
+  const jsonString = JSON.stringify(state, null, 2);
+  const blob = new Blob([jsonString], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${slugifyFilename(strategyName)}.json`;
+  document.body.appendChild(anchor);
+  anchor.click();
+
+  // Cleanup: remove the temporary anchor and revoke the blob URL
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+}

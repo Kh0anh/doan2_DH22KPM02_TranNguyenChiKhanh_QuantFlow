@@ -309,7 +309,7 @@ export function EditorControlBar({
             <Upload className="size-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Xuất JSON (Task 3.2.5)</TooltipContent>
+        <TooltipContent side="bottom">Xuất JSON</TooltipContent>
       </Tooltip>
 
       {/* ── Save ────────────────────────────────────────────────────── */}

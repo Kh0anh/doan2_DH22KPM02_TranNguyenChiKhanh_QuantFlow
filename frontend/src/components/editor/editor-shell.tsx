@@ -265,12 +265,25 @@ export function EditorShell() {
   }, [activeTabId, saveStrategy]);
 
   // ------------------------------------------------------------------
-  // Export handler (stub — full implementation in Task 3.2.5)
+  // Export handler — [3.2.5] serialize workspace → Blob download .json
   // ------------------------------------------------------------------
   const handleExport = useCallback(() => {
-    // TODO [3.2.5]: serialize workspace → Blob API → download .json
-    toast.info("Tính năng Xuất JSON sẽ được triển khai trong Task 3.2.5.");
-  }, []);
+    if (!activeTabId) return;
+    const workspace = workspacesRef.current.get(activeTabId);
+    if (!workspace) {
+      toast.error("Workspace chưa sẵn sàng. Vui lòng thử lại.");
+      return;
+    }
+    const tab = tabs.find((t) => t.id === activeTabId);
+    const name = tab?.name || "strategy";
+
+    // Dynamically import to keep the serializer out of the SSR bundle
+    import("./strategy-serializer").then(({ serializeWorkspace, exportToJsonFile }) => {
+      const state = serializeWorkspace(workspace);
+      exportToJsonFile(state, name);
+      toast.success("Đã xuất file JSON thành công.");
+    });
+  }, [activeTabId, tabs]);
 
   // ------------------------------------------------------------------
   // Name change handler
