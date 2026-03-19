@@ -18,6 +18,8 @@
 import { useEffect, useRef } from "react";
 import * as Blockly from "blockly";
 import * as EnMsg from "blockly/msg/en";
+// [3.2.2] Register all 26 custom blocks before any Blockly.inject() call
+import "@/lib/blockly/blocks";
 
 // ---------------------------------------------------------------------------
 // Locale — set once at module load (client-only, safe)
