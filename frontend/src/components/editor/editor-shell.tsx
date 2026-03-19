@@ -1,7 +1,7 @@
 /**
  * [3.2.1] EditorShell — Outer container for the Multi-tab Strategy Editor.
  * [3.2.4] Save/Load Strategy via API wired into this component.
- *
+ * [3.2.7] TabBar extracted into tab-bar.tsx, consumes Zustand store directly.
  * Architecture:
  *   ┌──────────────────────────────────────────────────────────┐
  *   │  Inline Tab Bar  (to be replaced by <TabBar/> in 3.2.7)  │
@@ -32,14 +32,13 @@ import * as Blockly from "blockly";
 import {
   LayoutGrid,
   Plus,
-  X,
   FileCode2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { TabBar } from "./tab-bar";
 import { EditorControlBar } from "./editor-control-bar";
 import { useEditorStore } from "@/store/editor-store";
 import { useEditorTab } from "@/lib/hooks/use-editor-tab";
-import type { EditorTab } from "@/types";
 
 // ---------------------------------------------------------------------------
 // BlocklyWorkspace loaded with ssr:false — safe browser-only Blockly init
@@ -99,81 +98,7 @@ function EditorEmptyState({ onNewTab }: { onNewTab: () => void }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Inline Tab Bar — minimal implementation; replaced by <TabBar/> in Task 3.2.7
-// ---------------------------------------------------------------------------
-interface InlineTabBarProps {
-  tabs: EditorTab[];
-  activeTabId: string | null;
-  onTabSelect: (tabId: string) => void;
-  onTabClose: (tabId: string) => void;
-  onNewTab: () => void;
-}
 
-function InlineTabBar({
-  tabs,
-  activeTabId,
-  onTabSelect,
-  onTabClose,
-  onNewTab,
-}: InlineTabBarProps) {
-  return (
-    <div className="flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-border bg-secondary scrollbar-none">
-      {tabs.map((tab) => {
-        const isActive = tab.id === activeTabId;
-        return (
-          <div
-            key={tab.id}
-            role="tab"
-            aria-selected={isActive}
-            onClick={() => onTabSelect(tab.id)}
-            className={[
-              "group relative flex h-full min-w-0 max-w-48 shrink-0 cursor-pointer select-none items-center gap-1.5 border-r border-border px-3 text-xs transition-colors",
-              isActive
-                ? "border-t-2 border-t-[var(--color-accent)] bg-background text-foreground font-medium pt-0.5"
-                : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
-            ].join(" ")}
-          >
-            {/* isDirty dot */}
-            {tab.isDirty && (
-              <span
-                className="size-1.5 shrink-0 rounded-full bg-[var(--color-warning)]"
-                aria-label="Chưa lưu"
-              />
-            )}
-            {/* Tab name */}
-            <span className="truncate">
-              {tab.name}
-              {tab.strategyId === null && !tab.isDirty ? " *" : ""}
-            </span>
-            {/* Close button — visible on hover */}
-            <button
-              type="button"
-              aria-label={`Đóng tab ${tab.name}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onTabClose(tab.id);
-              }}
-              className="ml-0.5 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100 focus:opacity-100"
-            >
-              <X className="size-3" />
-            </button>
-          </div>
-        );
-      })}
-
-      {/* New tab button */}
-      <button
-        type="button"
-        aria-label="Mở tab mới"
-        onClick={onNewTab}
-        className="flex h-full shrink-0 items-center px-2.5 text-muted-foreground hover:bg-background/60 hover:text-foreground transition-colors"
-      >
-        <Plus className="size-3.5" />
-      </button>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // EditorShell — main export
@@ -305,14 +230,8 @@ export function EditorShell() {
   // ------------------------------------------------------------------
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* ── Tab Bar ────────────────────────────────────────────────── */}
-      <InlineTabBar
-        tabs={tabs}
-        activeTabId={activeTabId}
-        onTabSelect={setActiveTab}
-        onTabClose={handleTabClose}
-        onNewTab={openNewTab}
-      />
+      {/* ── Tab Bar (3.2.7 — consumes Zustand store directly) ──────── */}
+      <TabBar />
 
       {/* ── Control Bar ────────────────────────────────────────────── */}
       <EditorControlBar

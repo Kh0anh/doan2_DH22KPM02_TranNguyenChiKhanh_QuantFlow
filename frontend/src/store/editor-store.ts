@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { EditorTab } from "@/types";
 import { v4 as uuidv4 } from "uuid";
+import { toast } from "sonner";
 
 /**
  * [3.2.7] GlobalEditorStore — Multi-tab Editor state.
@@ -49,9 +50,10 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       set({ activeTabId: existing.id });
       return;
     }
-    // TODO [3.2.7]: enforce MAX_TABS = 7, show toast warning if exceeded
-    // TODO [3.2.7]: enforce MAX_TABS = 7, show toast warning if exceeded
-    if (tabs.length >= MAX_TABS) return;
+    if (tabs.length >= MAX_TABS) {
+      toast.warning(`Tối đa ${MAX_TABS} tab. Vui lòng đóng tab khác trước.`);
+      return;
+    }
     const newTab: EditorTab = {
       id: strategyId,
       strategyId,
@@ -66,8 +68,10 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
 
   openNewTab: () => {
     const { tabs } = get();
-    // TODO [3.2.7]: show toast warning when limit reached
-    if (tabs.length >= MAX_TABS) return;
+    if (tabs.length >= MAX_TABS) {
+      toast.warning(`Tối đa ${MAX_TABS} tab. Vui lòng đóng tab khác trước.`);
+      return;
+    }
     const id = uuidv4();
     const newTab: EditorTab = {
       id,
