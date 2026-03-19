@@ -60,9 +60,11 @@ export interface TradeMarker {
 
 export interface ApiKeyInfo {
   id: string;
-  label: string;
-  apiKeyMasked: string; // Only last 4 chars visible — NFR-SEC-05
-  createdAt: string;
+  exchange: string;
+  apiKeyMasked: string; // Only last 4 chars visible — NFR-SEC-05. Secret Key never returned.
+  status: "Connected" | "Disconnected";
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // -----------------------------------------------------------------
