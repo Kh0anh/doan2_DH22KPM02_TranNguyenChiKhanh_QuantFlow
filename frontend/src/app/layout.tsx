@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "@/lib/auth";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,7 +16,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "QuantFlow — Low-code Crypto Trading",
-  description: "Low-code platform for building and running automated crypto trading strategies on CEX",
+  description:
+    "Nền tảng Low-code hỗ trợ xây dựng và vận hành chiến lược giao dịch tiền mã hóa",
 };
 
 export default function RootLayout({
@@ -25,15 +26,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+    <html
+      lang="vi"
+      className={`${geistSans.variable} ${geistMono.variable} dark`}
+    >
+      <body className="antialiased">
         <TooltipProvider>
-          <AuthProvider>
-            {children}
-          </AuthProvider>
+          {children}
         </TooltipProvider>
+        <Toaster richColors position="top-right" />
       </body>
     </html>
   );

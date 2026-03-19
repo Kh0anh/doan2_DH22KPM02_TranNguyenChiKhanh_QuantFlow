@@ -1,17 +1,14 @@
-import type { Metadata } from "next";
-
-export const metadata: Metadata = {
-  title: "Sign In — QuantFlow",
-  description: "Sign in to your QuantFlow account to manage your automated crypto trading bots.",
-};
-
+/**
+ * [3.1.1] Login layout — centered auth layout, no sidebar.
+ * Full implementation: Task 3.1.1
+ */
 export default function LoginLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center bg-background">
       {children}
     </div>
   );

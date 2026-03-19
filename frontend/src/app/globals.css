@@ -55,6 +55,7 @@
   --color-short: #EF5350;
 }
 
+/* Light mode base (shadcn default — overridden by .dark at runtime) */
 :root {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
@@ -90,8 +91,8 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
+/* QuantFlow Dark Theme — GitHub Dark / Trading terminal aesthetic */
 .dark {
-  /* QuantFlow Dark Theme — inspired by GitHub Dark / Trading terminals */
   --background: #0D1117;
   --foreground: #E6EDF3;
   --card: #161B22;
@@ -134,7 +135,7 @@
   }
 }
 
-/* Force dark mode on app load */
+/* Force dark mode globally */
 html {
   color-scheme: dark;
 }

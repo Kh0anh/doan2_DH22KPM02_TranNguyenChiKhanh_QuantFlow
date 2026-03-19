@@ -1,5 +1,9 @@
 import { redirect } from "next/navigation";
 
-export default function Page() {
+/**
+ * Root route — immediately redirects to /login.
+ * Auth protection is handled in (dashboard)/layout.tsx.
+ */
+export default function Home() {
   redirect("/login");
 }

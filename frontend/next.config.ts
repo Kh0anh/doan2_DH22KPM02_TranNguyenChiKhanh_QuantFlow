@@ -1,27 +1,19 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
-  
-  // Turbopack is the default dev bundler in Next.js 16+.
-  // An empty config silences the "no turbopack config" error while
-  // keeping the webpack block below for production builds.
-  turbopack: {},
-
-  // Prevent constant HMR reloads when running inside Docker on Windows.
-  // Docker volume mounts trigger spurious file-change events; disabling
-  // polling and ignoring heavy directories stops the dev server from
-  // reloading the page continuously.
-  webpack: (config, { dev }) => {
-    if (dev) {
-      config.watchOptions = {
-        ...config.watchOptions,
-        poll: 1000,
-        aggregateTimeout: 300,
-        ignored: ["**/node_modules/**", "**/.next/**"],
-      };
-    }
-    return config;
+  /**
+   * API proxy rewrites for local development (without Docker).
+   * In production, Nginx handles routing — these rewrites are ignored.
+   * Backend URL can be overridden via NEXT_PUBLIC_API_URL env var.
+   */
+  async rewrites() {
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
+    return [
+      {
+        source: "/api/v1/:path*",
+        destination: `${backendUrl}/api/v1/:path*`,
+      },
+    ];
   },
 };
 
