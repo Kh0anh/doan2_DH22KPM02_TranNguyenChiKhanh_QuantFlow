@@ -96,7 +96,7 @@ export function TabBar({ workspacesRef }: TabBarProps) {
   }, []);
 
   // ------------------------------------------------------------------
-  // Keyboard shortcuts: Ctrl+Tab (next tab), Ctrl+W (close active)
+  // Keyboard shortcuts: Ctrl+Tab (next), Ctrl+W (close), Ctrl+T (new)
   // ------------------------------------------------------------------
   const handleKeyboard = useCallback(
     (e: KeyboardEvent) => {
@@ -118,8 +118,15 @@ export function TabBar({ workspacesRef }: TabBarProps) {
         }
         return;
       }
+
+      // Ctrl+T — open new tab (Task 3.2.12)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "t") {
+        e.preventDefault();
+        openNewTab();
+        return;
+      }
     },
-    [tabs, activeTabId, setActiveTab, requestClose],
+    [tabs, activeTabId, setActiveTab, requestClose, openNewTab],
   );
 
   useEffect(() => {
