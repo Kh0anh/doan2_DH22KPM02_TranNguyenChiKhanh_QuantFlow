@@ -95,6 +95,11 @@ export function BacktestPanel() {
           setProgress(100);
           setResult(mapResultData(res));
           setState("completed");
+        } else if (res.status === "failed") {
+          const msg = res.error_message ?? "Lỗi không xác định.";
+          setErrorMsg(msg);
+          toast.error(`Backtest thất bại: ${msg}`);
+          setState("failed");
         } else {
           // canceled
           toast.info("Phiên Backtest đã bị hủy.");

@@ -601,7 +601,7 @@ export interface BacktestCreatedResponse {
  */
 export interface BacktestResultResponse {
   backtest_id: string;
-  status: "processing" | "completed" | "canceled";
+  status: "processing" | "completed" | "canceled" | "failed";
   progress?: number;
   config?: {
     strategy_id: string;
@@ -637,6 +637,7 @@ export interface BacktestResultResponse {
   }[];
   created_at?: string;
   completed_at?: string;
+  error_message?: string;
 }
 
 export const backtestApi = {

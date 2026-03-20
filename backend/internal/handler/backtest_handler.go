@@ -256,6 +256,15 @@ func buildBacktestResult(snap logic.BacktestSnapshot) map[string]any {
 			"completed_at": snap.CompletedAt,
 		}
 
+	case logic.BacktestStatusFailed:
+		return map[string]any{
+			"backtest_id":   snap.ID,
+			"status":        snap.Status,
+			"error_message": snap.ErrorMessage,
+			"created_at":    snap.CreatedAt,
+			"completed_at":  snap.CompletedAt,
+		}
+
 	default: // canceled
 		return map[string]any{
 			"backtest_id":  snap.ID,

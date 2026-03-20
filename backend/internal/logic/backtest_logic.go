@@ -49,6 +49,7 @@ const (
 	BacktestStatusProcessing = "processing"
 	BacktestStatusCompleted  = "completed"
 	BacktestStatusCanceled   = "canceled"
+	BacktestStatusFailed     = "failed"
 )
 
 // defaultBacktestMaxUnit is the per-session unit budget injected into the
@@ -161,6 +162,7 @@ type BacktestSnapshot struct {
 	CreatedAt   time.Time
 	CompletedAt *time.Time
 	Config      *BacktestConfig
+	ErrorMessage string
 	// The following fields are non-nil only when Status == BacktestStatusCompleted.
 	Summary     *BacktestSummaryDTO
 	EquityCurve []BacktestEquityPointDTO
@@ -191,11 +193,12 @@ type BacktestJob struct {
 	config    *BacktestConfig
 
 	// Guarded by mu — written by the pipeline goroutine.
-	status      string
-	completedAt *time.Time
-	summary     *backtest.PerformanceSummary
-	equityCurve []backtest.EquityPoint
-	trades      []backtest.FilledTrade
+	status       string
+	completedAt  *time.Time
+	errorMessage string
+	summary      *backtest.PerformanceSummary
+	equityCurve  []backtest.EquityPoint
+	trades       []backtest.FilledTrade
 
 	// Accessed exclusively via sync/atomic by both the pipeline goroutine
 	// (writer) and the HTTP handler goroutine (reader).
@@ -209,12 +212,13 @@ func (j *BacktestJob) Snapshot() BacktestSnapshot {
 	defer j.mu.RUnlock()
 
 	snap := BacktestSnapshot{
-		ID:          j.id,
-		Status:      j.status,
-		Progress:    atomic.LoadInt32(&j.progress),
-		CreatedAt:   j.createdAt,
-		CompletedAt: j.completedAt,
-		Config:      j.config,
+		ID:           j.id,
+		Status:       j.status,
+		Progress:     atomic.LoadInt32(&j.progress),
+		CreatedAt:    j.createdAt,
+		CompletedAt:  j.completedAt,
+		Config:       j.config,
+		ErrorMessage: j.errorMessage,
 	}
 
 	if j.summary != nil {
@@ -476,6 +480,9 @@ func (l *BacktestLogic) runPipeline(
 		job.mu.Lock()
 		job.status = status
 		job.completedAt = &now
+		if cause != nil {
+			job.errorMessage = cause.Error()
+		}
 		job.mu.Unlock()
 		job.cancel() // idempotent; releases context even if already done
 		if cause != nil {
@@ -486,12 +493,21 @@ func (l *BacktestLogic) runPipeline(
 		}
 	}
 
+	// chooseTerminalStatus returns "canceled" if the error is a context
+	// cancellation (user-initiated), or "failed" for runtime errors.
+	chooseTerminalStatus := func(err error) string {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return BacktestStatusCanceled
+		}
+		return BacktestStatusFailed
+	}
+
 	// Stage 1: Simulation (FR-RUN-02).
 	// &job.progress is the atomic int32 counter updated per candle by the simulator.
 	sim := backtest.NewBacktestSimulator(l.candleRepo, log)
 	runOutput, err := sim.Run(ctx, cfg, logicJSON, &job.progress)
 	if err != nil {
-		markTerminal(BacktestStatusCanceled, err)
+		markTerminal(chooseTerminalStatus(err), err)
 		return
 	}
 
@@ -499,21 +515,21 @@ func (l *BacktestLogic) runPipeline(
 	matcher := backtest.NewOrderMatcher(cfg.FeeRate, log)
 	matchResult, err := matcher.Match(ctx, runOutput)
 	if err != nil {
-		markTerminal(BacktestStatusCanceled, err)
+		markTerminal(chooseTerminalStatus(err), err)
 		return
 	}
 
 	// Stage 3: Performance Report (FR-RUN-03).
 	summary, err := backtest.CalculatePerformance(matchResult, cfg.InitialCapital)
 	if err != nil {
-		markTerminal(BacktestStatusCanceled, err)
+		markTerminal(chooseTerminalStatus(err), err)
 		return
 	}
 
 	// Stage 4: Equity Curve generation (FR-RUN-04).
 	equityCurve, err := backtest.GenerateEquityCurve(matchResult, cfg.InitialCapital, cfg.StartTime)
 	if err != nil {
-		markTerminal(BacktestStatusCanceled, err)
+		markTerminal(chooseTerminalStatus(err), err)
 		return
 	}
 
