@@ -37,8 +37,10 @@ import {
 import { toast } from "sonner";
 import { TabBar } from "./tab-bar";
 import { EditorControlBar } from "./editor-control-bar";
+import { UnsavedChangesDialog } from "./unsaved-changes-dialog";
 import { useEditorStore } from "@/store/editor-store";
 import { useEditorTab } from "@/lib/hooks/use-editor-tab";
+import { useUnsavedChangesGuard } from "@/lib/hooks/use-unsaved-changes-guard";
 
 // ---------------------------------------------------------------------------
 // BlocklyWorkspace loaded with ssr:false — safe browser-only Blockly init
@@ -125,6 +127,10 @@ export function EditorShell() {
 
   // [3.2.4] Save/Load strategy hook — wired to the workspace registry
   const { saveStrategy, loadStrategy, isSaving } = useEditorTab(workspacesRef);
+
+  // [3.2.10] Navigate-away protection for dirty tabs
+  const { dialogProps: unsavedDialogProps, requestNavigateAway } =
+    useUnsavedChangesGuard();
 
   // ------------------------------------------------------------------
   // WorkspaceSvg lifecycle callbacks (stable via useCallback)
@@ -232,6 +238,7 @@ export function EditorShell() {
         onSave={handleSave}
         onExport={handleExport}
         onNameChange={handleNameChange}
+        onBack={() => requestNavigateAway("/strategies")}
       />
 
       {/* ── Workspace Area ─────────────────────────────────────────── */}
@@ -269,6 +276,9 @@ export function EditorShell() {
           </>
         )}
       </div>
+
+      {/* [3.2.10] Navigate-away warning dialog */}
+      <UnsavedChangesDialog {...unsavedDialogProps} />
     </div>
   );
 }

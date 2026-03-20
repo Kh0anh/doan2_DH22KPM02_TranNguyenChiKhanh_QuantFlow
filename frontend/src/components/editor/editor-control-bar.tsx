@@ -24,7 +24,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
   Undo2,
@@ -70,6 +69,8 @@ interface EditorControlBarProps {
   onSave: () => void;
   onExport: () => void;
   onNameChange: (name: string) => void;
+  /** Navigate back — guarded by UnsavedChangesDialog (Task 3.2.10) */
+  onBack: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,8 +84,8 @@ export function EditorControlBar({
   onSave,
   onExport,
   onNameChange,
+  onBack,
 }: EditorControlBarProps) {
-  const router = useRouter();
   const [localName, setLocalName] = useState(activeTab?.name ?? "");
   const nameRef = useRef(localName);
 
@@ -169,7 +170,7 @@ export function EditorControlBar({
             variant="ghost"
             size="icon"
             className="size-7 shrink-0"
-            onClick={() => router.push("/strategies")}
+            onClick={onBack}
             aria-label="Trở về danh sách chiến lược"
           >
             <ChevronLeft className="size-4" />
