@@ -360,7 +360,14 @@ func (p *simulatedTradingProxy) GetOpenOrdersCount(_ context.Context, _ string) 
 
 // SmartOrder records a new PendingOrder submitted by the trade_smart_order
 // block. Actual order matching against the NEXT candle is performed by
-// task 2.6.2 (order_matcher.go). No position state is mutated here.
+// task 2.6.2 (order_matcher.go).
+//
+// Additionally, SmartOrder updates the provisional SimulationState.Position
+// so that subsequent blocks in the SAME session (e.g., data_position_info,
+// trade_close_position) see the "intended" position before the order is
+// actually filled by the matcher. This provisional state is approximate
+// (uses the current candle's close price as a proxy for the fill price)
+// but is essential for intra-session logic like "open then close".
 func (p *simulatedTradingProxy) SmartOrder(
 	_ context.Context,
 	_ string, // symbol — always cfg.Symbol for a backtest session
@@ -383,11 +390,23 @@ func (p *simulatedTradingProxy) SmartOrder(
 		IsReduceOnly:      false,
 		SubmittedAtCandle: p.currentCandle.OpenTime,
 	})
+
+	// Update provisional position state so ClosePosition / GetPositionSize
+	// work correctly within the same session.
+	closePrice, _ := decimal.NewFromString(p.currentCandle.ClosePrice)
+	p.state.Position = SimulatedPosition{
+		Side:       side,
+		EntryPrice: closePrice,
+		Size:       quantity,
+	}
+
 	return nil
 }
 
 // ClosePosition submits a reduce-only MARKET order that closes the entire
 // open position. No-op when the current position is flat.
+// After submitting the close order, the provisional position is cleared so
+// subsequent blocks in the same session see a flat position.
 func (p *simulatedTradingProxy) ClosePosition(_ context.Context, _ string) error {
 	pos := p.state.Position
 	if pos.IsFlat() {
@@ -411,6 +430,10 @@ func (p *simulatedTradingProxy) ClosePosition(_ context.Context, _ string) error
 		IsReduceOnly:      true,
 		SubmittedAtCandle: p.currentCandle.OpenTime,
 	})
+
+	// Clear provisional position — now flat after close order submitted.
+	p.state.Position = SimulatedPosition{}
+
 	return nil
 }
 
@@ -525,9 +548,9 @@ func (s *Simulator) Run(
 		return nil, ErrInvalidTrigger
 	}
 
-	// Resolve the strategy body — the statement chain attached to the DO input
-	// of the event_on_candle root block.
-	bodyBlock := blockly.GetInputBlock(root, "DO")
+	// Resolve the strategy body — the statement chain attached via the
+	// nextStatement connector of the event_on_candle root block.
+	bodyBlock := blockly.GetBodyBlock(root)
 
 	log.Info("backtest: strategy parsed",
 		slog.String("trigger", trigger),

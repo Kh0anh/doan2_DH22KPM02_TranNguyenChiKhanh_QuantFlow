@@ -298,6 +298,30 @@ func GetInputBlock(b *Block, inputName string) *Block {
 	return slot.Block
 }
 
+// GetBodyBlock resolves the strategy body (first child statement) from the
+// root event_on_candle block.
+//
+// The event_on_candle block definition uses `nextStatement` (not
+// `input_statement "DO"`), so the strategy body is serialized under
+// root.Next.Block in Blockly 12's JSON format — NOT under root.Inputs["DO"].
+//
+// This helper checks both locations for forward compatibility: Inputs["DO"]
+// first (the original design assumption), then Next.Block (the actual format).
+func GetBodyBlock(root *Block) *Block {
+	if root == nil {
+		return nil
+	}
+	// Preferred: check Inputs["DO"] (input_statement "DO" wiring)
+	if body := GetInputBlock(root, "DO"); body != nil {
+		return body
+	}
+	// Fallback: check Next (nextStatement wiring — actual Blockly 12 format)
+	if root.Next != nil {
+		return root.Next.Block
+	}
+	return nil
+}
+
 // GetFieldString safely retrieves a block field value as a string.
 // Used for dropdown fields (e.g., TRIGGER, TIMEFRAME, OP, SIDE, ORDER_TYPE,
 // PRICE_TYPE, FIELD, MARGIN_TYPE) which Blockly serializes as JSON strings.

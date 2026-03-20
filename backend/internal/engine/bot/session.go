@@ -167,10 +167,10 @@ func (s *Session) Run(ctx context.Context) (SessionResult, error) {
 	// ── Step 2: Extract event metadata ─────────────────────────────────────
 	trigger, timeframe := blockly.ExtractEventMeta(root)
 
-	// ── Step 3: Resolve the strategy body (DO chain) ───────────────────────
-	// GetInputBlock returns nil for an empty body — ExecuteChain treats nil as a
-	// no-op, so a strategy with no logic blocks exits cleanly without error.
-	bodyBlock := blockly.GetInputBlock(root, "DO")
+	// ── Step 3: Resolve the strategy body (nextStatement chain) ────────────
+	// GetBodyBlock checks both Inputs["DO"] and Next.Block — see parser.go.
+	// Returns nil for an empty body — ExecuteChain treats nil as a no-op.
+	bodyBlock := blockly.GetBodyBlock(root)
 
 	// ── Step 4: Build a fresh ExecutionContext for this session ────────────
 	execCtx := blockly.NewExecutionContext(ctx, s.cfg.Symbol, s.logger)

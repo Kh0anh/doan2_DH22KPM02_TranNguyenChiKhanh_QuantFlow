@@ -115,12 +115,17 @@ func executeTradeSmartOrder(ctx *ExecutionContext, block *Block) (interface{}, e
 	}
 	quantity := toDecimal(qtyVal)
 
-	// ── Guard: non-positive quantity is always a logic error ─────────────────
+	// ── Guard: non-positive quantity — skip silently (no-op) ────────────────
+	// Dynamic quantity formulas (e.g. balance÷price) may evaluate to ≤ 0 on
+	// certain candles (insufficient balance, etc.). Treat as a no-op rather
+	// than a fatal session error so subsequent blocks can still execute.
 	if quantity.LessThanOrEqual(decimal.Zero) {
-		return nil, fmt.Errorf(
-			"trade_smart_order (block_id=%s): quantity must be > 0, got %s",
-			block.ID, quantity.String(),
+		ctx.Logger.Warn("trade_smart_order: quantity <= 0 — skipping order",
+			slog.String("block_id", block.ID),
+			slog.String("quantity", quantity.String()),
+			slog.String("symbol", ctx.Symbol),
 		)
+		return nil, nil
 	}
 
 	// ── Delegate to exchange proxy ────────────────────────────────────────────
