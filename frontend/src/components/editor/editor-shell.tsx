@@ -170,16 +170,7 @@ export function EditorShell() {
     [markDirty]
   );
 
-  // ------------------------------------------------------------------
-  // Tab actions
-  // ------------------------------------------------------------------
-  const handleTabClose = useCallback(
-    (tabId: string) => {
-      // NOTE: isDirty check + CloseTabDialog wired in Task 3.2.9
-      closeTab(tabId);
-    },
-    [closeTab]
-  );
+
 
   // ------------------------------------------------------------------
   // Save handler — [3.2.4] wired to real save via useEditorTab
@@ -230,8 +221,8 @@ export function EditorShell() {
   // ------------------------------------------------------------------
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* ── Tab Bar (3.2.7 — consumes Zustand store directly) ──────── */}
-      <TabBar />
+      {/* ── Tab Bar (3.2.7 + 3.2.9 — isDirty close warning) ──────── */}
+      <TabBar workspacesRef={workspacesRef} />
 
       {/* ── Control Bar ────────────────────────────────────────────── */}
       <EditorControlBar
