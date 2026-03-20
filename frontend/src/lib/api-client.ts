@@ -304,4 +304,62 @@ export const marketApi = {
     );
     return res.data;
   },
+
+  /**
+   * GET /market/candles — Fetch historical OHLCV data + trade markers.
+   * Returns candles sorted by time ASC plus trade markers for overlay.
+   * Used by CandleChart component (Task 3.3.2).
+   */
+  async getCandles(params: {
+    symbol: string;
+    timeframe: string;
+    start?: string;
+    end?: string;
+    limit?: number;
+  }): Promise<CandleDataResponse> {
+    const query = new URLSearchParams({
+      symbol: params.symbol,
+      timeframe: params.timeframe,
+    });
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.start) query.set("start", params.start);
+    if (params.end) query.set("end", params.end);
+    const res = await apiFetch<{ data: CandleDataResponse }>(
+      `/market/candles?${query}`,
+    );
+    return res.data;
+  },
 };
+
+// -----------------------------------------------------------------
+// Market Candle API response types (Task 3.3.2)
+// -----------------------------------------------------------------
+
+/** Single candle returned by GET /market/candles */
+interface CandleResponse {
+  open_time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  is_closed: boolean;
+}
+
+/** Trade marker returned by GET /market/candles */
+interface TradeMarkerResponse {
+  time: string;
+  price: number;
+  side: "Long" | "Short";
+  bot_name: string;
+  bot_id: string;
+}
+
+/** Full response from GET /market/candles */
+export interface CandleDataResponse {
+  symbol: string;
+  timeframe: string;
+  candles: CandleResponse[];
+  markers: TradeMarkerResponse[];
+}
+
