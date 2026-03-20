@@ -6,9 +6,9 @@
 // Layout (frontend_flows.md §3.2.5 — State 1):
 //   ┌───────────────────────────────────────────────────────────────┐
 //   │  Chiến lược: [Dropdown ▼      ]    Symbol:   [BTCUSDT ▼]      │
-//   │  Timeframe:  [15m ▼]               Từ ngày:  [📅 2024-01-01]  │
-//   │  Vốn ban đầu:[1000 USDT]           Đến ngày: [📅 2024-12-31]  │
-//   │  Phí GD:     [0.04 %]              Unit/Ses: [1000]            │
+//   │  Từ ngày:    [📅 2024-01-01]       Đến ngày: [📅 2024-12-31]  │
+//   │  Vốn ban đầu:[1000 USDT]           Phí GD:   [0.04 %]         │
+//   │  Unit/Ses:   [1000]                                            │
 //   │               [======  Bắt đầu Backtest  ======]               │
 //   └───────────────────────────────────────────────────────────────┘
 //
@@ -42,14 +42,6 @@ import { toast } from "sonner";
 // -----------------------------------------------------------------
 
 const SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"];
-const TIMEFRAMES = [
-  { value: "1m", label: "1 phút" },
-  { value: "5m", label: "5 phút" },
-  { value: "15m", label: "15 phút" },
-  { value: "1h", label: "1 giờ" },
-  { value: "4h", label: "4 giờ" },
-  { value: "1D", label: "1 ngày" },
-];
 
 // Default date range: past 6 months
 const now = new Date();
@@ -109,7 +101,6 @@ export function BacktestConfigForm({
   // ------- Form state -------
   const [strategyId, setStrategyId] = useState("");
   const [symbol, setSymbol] = useState("BTCUSDT");
-  const [timeframe, setTimeframe] = useState("15m");
   const [startDate, setStartDate] = useState(DEFAULT_START);
   const [endDate, setEndDate] = useState(DEFAULT_END);
   const [initialCapital, setInitialCapital] = useState("1000");
@@ -150,7 +141,6 @@ export function BacktestConfigForm({
     const params: CreateBacktestParams = {
       strategy_id: strategyId,
       symbol,
-      timeframe,
       start_time: new Date(startDate).toISOString(),
       end_time: new Date(endDate + "T23:59:59").toISOString(),
       initial_capital: cap,
@@ -172,7 +162,6 @@ export function BacktestConfigForm({
   }, [
     strategyId,
     symbol,
-    timeframe,
     startDate,
     endDate,
     initialCapital,
@@ -232,30 +221,8 @@ export function BacktestConfigForm({
         </div>
       </div>
 
-      {/* Row 2: Timeframe + Start Date */}
+      {/* Row 2: Start Date + End Date */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="bt-timeframe" className="text-xs">
-            Timeframe
-          </Label>
-          <Select
-            value={timeframe}
-            onValueChange={setTimeframe}
-            disabled={disabled}
-          >
-            <SelectTrigger id="bt-timeframe" className="h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TIMEFRAMES.map((tf) => (
-                <SelectItem key={tf.value} value={tf.value}>
-                  {tf.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
         <div className="space-y-1.5">
           <Label htmlFor="bt-start" className="text-xs">
             Từ ngày
@@ -267,25 +234,6 @@ export function BacktestConfigForm({
             onChange={(e) => setStartDate(e.target.value)}
             disabled={disabled}
             className="h-8 text-xs"
-          />
-        </div>
-      </div>
-
-      {/* Row 3: Initial Capital + End Date */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="bt-capital" className="text-xs">
-            Vốn ban đầu (USDT)
-          </Label>
-          <Input
-            id="bt-capital"
-            type="number"
-            min="1"
-            step="100"
-            value={initialCapital}
-            onChange={(e) => setInitialCapital(e.target.value)}
-            disabled={disabled}
-            className="h-8 text-xs font-mono"
           />
         </div>
 
@@ -304,8 +252,24 @@ export function BacktestConfigForm({
         </div>
       </div>
 
-      {/* Row 4: Fee Rate + Max Unit */}
+      {/* Row 3: Initial Capital + Fee Rate */}
       <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="bt-capital" className="text-xs">
+            Vốn ban đầu (USDT)
+          </Label>
+          <Input
+            id="bt-capital"
+            type="number"
+            min="1"
+            step="100"
+            value={initialCapital}
+            onChange={(e) => setInitialCapital(e.target.value)}
+            disabled={disabled}
+            className="h-8 text-xs font-mono"
+          />
+        </div>
+
         <div className="space-y-1.5">
           <Label htmlFor="bt-fee" className="text-xs">
             Phí GD (%)
@@ -321,7 +285,10 @@ export function BacktestConfigForm({
             className="h-8 text-xs font-mono"
           />
         </div>
+      </div>
 
+      {/* Row 4: Max Unit */}
+      <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label htmlFor="bt-unit" className="text-xs">
             Unit/Session

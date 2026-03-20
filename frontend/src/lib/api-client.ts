@@ -579,7 +579,6 @@ export const tradeApi = {
 export interface CreateBacktestParams {
   strategy_id: string;
   symbol: string;
-  timeframe: string;
   start_time: string;
   end_time: string;
   initial_capital: number;
