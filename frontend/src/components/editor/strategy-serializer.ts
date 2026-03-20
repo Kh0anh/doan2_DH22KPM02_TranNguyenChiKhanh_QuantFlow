@@ -100,6 +100,37 @@ export function hasEventTriggerBlock(state: BlocklyJsonState): boolean {
   );
 }
 
+/**
+ * Check whether a strategy is "valid" (ready to run) or "draft":
+ *
+ *   - **valid**: the workspace has exactly ONE top-level block, and that
+ *     block is an event trigger (event_on_candle). This means there are
+ *     no orphan/detached blocks floating in the workspace.
+ *   - **draft**: any other case — missing event trigger, multiple top-level
+ *     blocks (orphans), or empty workspace.
+ *
+ * In Blockly's serialized JSON, `state.blocks.blocks` is the array of
+ * top-level (root) blocks. Blocks connected via next/input connections
+ * are nested inside their parent — they are NOT separate top-level entries.
+ * So multiple entries = orphan blocks = draft.
+ *
+ * @param state — JSON state from serializeWorkspace
+ * @returns true if the strategy is valid (can be used by bots/backtest)
+ */
+export function isStrategyValid(state: BlocklyJsonState): boolean {
+  const blocks = state?.blocks as { blocks?: Array<{ type?: string }> } | undefined;
+  if (!blocks?.blocks || !Array.isArray(blocks.blocks)) {
+    return false;
+  }
+
+  // Must have exactly one top-level block and it must be an event trigger.
+  return (
+    blocks.blocks.length === 1 &&
+    blocks.blocks[0].type !== undefined &&
+    EVENT_TRIGGER_TYPES.has(blocks.blocks[0].type)
+  );
+}
+
 // -----------------------------------------------------------------
 // Export: Workspace → .json file download (Blob API)
 // -----------------------------------------------------------------

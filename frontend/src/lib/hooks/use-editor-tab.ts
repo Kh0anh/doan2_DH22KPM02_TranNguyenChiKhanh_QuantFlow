@@ -26,7 +26,7 @@ import { strategyApi, ApiError } from "@/lib/api-client";
 import {
   serializeWorkspace,
   deserializeToWorkspace,
-  hasEventTriggerBlock,
+  isStrategyValid,
 } from "@/components/editor/strategy-serializer";
 import { useEditorStore } from "@/store/editor-store";
 
@@ -43,6 +43,12 @@ interface UseEditorTabReturn {
   isSaving: boolean;
   /** Set of tabIds currently loading */
   loadingTabs: Set<string>;
+  /** Non-null when a draft save confirmation is pending */
+  pendingDraftTabId: string | null;
+  /** Proceed with saving the pending draft */
+  confirmDraftSave: () => Promise<void>;
+  /** Cancel the pending draft save */
+  cancelDraftSave: () => void;
 }
 
 // -----------------------------------------------------------------
@@ -60,6 +66,7 @@ export function useEditorTab(
 ): UseEditorTabReturn {
   const [isSaving, setIsSaving] = useState(false);
   const [loadingTabs, setLoadingTabs] = useState<Set<string>>(new Set());
+  const [pendingDraftTabId, setPendingDraftTabId] = useState<string | null>(null);
 
   // Prevent duplicate loads
   const loadedRef = useRef<Set<string>>(new Set());
@@ -70,48 +77,44 @@ export function useEditorTab(
   // ----------------------------------------------------------------
   // saveStrategy — serialize workspace → validate → POST/PUT API
   // ----------------------------------------------------------------
-  const saveStrategy = useCallback(
-    async (tabId: string) => {
+
+  // Core save logic (called directly for valid, or via confirmDraftSave for drafts)
+  const doSave = useCallback(
+    async (tabId: string, forceDraft: boolean) => {
       const workspace = workspacesRef.current?.get(tabId);
       if (!workspace) {
         toast.error("Workspace chưa sẵn sàng. Vui lòng thử lại.");
         return;
       }
 
-      // Get current tab info from store
       const tab = store.getState().tabs.find((t) => t.id === tabId);
       if (!tab) return;
 
-      // Validate: strategy name must not be empty
       const name = tab.name.trim();
       if (!name || name === "Chiến lược mới") {
         toast.error("Vui lòng đặt tên cho chiến lược trước khi lưu.");
         return;
       }
 
-      // Serialize workspace to JSON
       const logicJson = serializeWorkspace(workspace);
+      const valid = isStrategyValid(logicJson);
+      const status = valid ? "Valid" : "Draft";
 
-      // Validate: must contain Event Trigger block (SRS FR-DESIGN-11)
-      if (!hasEventTriggerBlock(logicJson)) {
-        toast.error(
-          "Chiến lược phải bắt đầu bằng khối Sự kiện (Event Trigger).",
-        );
+      // If invalid and not yet confirmed by user, pause and show dialog
+      if (!valid && !forceDraft) {
+        setPendingDraftTabId(tabId);
         return;
       }
 
       setIsSaving(true);
       try {
         if (tab.strategyId === null) {
-          // ── CREATE (new strategy) ─────────────────────────────────
           const created = await strategyApi.create({
             name,
             logic_json: logicJson,
-            status: "valid",
+            status,
           });
 
-          // Update tab with the new strategyId from backend
-          // We need to update both the strategyId and the tab id
           const { tabs, activeTabId } = store.getState();
           const updatedTabs = tabs.map((t) =>
             t.id === tabId
@@ -120,23 +123,28 @@ export function useEditorTab(
           );
           store.setState({ tabs: updatedTabs, activeTabId });
 
-          toast.success("Đã tạo chiến lược mới thành công.");
+          toast.success(
+            status === "Valid"
+              ? "Đã tạo chiến lược mới thành công."
+              : "Đã lưu chiến lược dưới dạng nháp.",
+          );
         } else {
-          // ── UPDATE (existing strategy) ────────────────────────────
           const result = await strategyApi.update(tab.strategyId, {
             name,
             logic_json: logicJson,
-            status: "valid",
+            status,
           });
 
-          // Mark tab as clean
           store.getState().markClean(tabId);
 
-          // Show warning if bots are using this strategy
           if (result.warning) {
             toast.warning(result.warning);
           } else {
-            toast.success("Đã cập nhật chiến lược thành công.");
+            toast.success(
+              status === "Valid"
+                ? "Đã cập nhật chiến lược thành công."
+                : "Đã lưu chiến lược dưới dạng nháp.",
+            );
           }
         }
       } catch (err) {
@@ -167,6 +175,24 @@ export function useEditorTab(
     },
     [workspacesRef, store],
   );
+
+  // Public: initiate save (may pause for draft confirmation)
+  const saveStrategy = useCallback(
+    async (tabId: string) => doSave(tabId, false),
+    [doSave],
+  );
+
+  // Confirm draft save (user clicked "Lưu nháp" in dialog)
+  const confirmDraftSave = useCallback(async () => {
+    const tabId = pendingDraftTabId;
+    setPendingDraftTabId(null);
+    if (tabId) await doSave(tabId, true);
+  }, [pendingDraftTabId, doSave]);
+
+  // Cancel draft save (user clicked "Hủy")
+  const cancelDraftSave = useCallback(() => {
+    setPendingDraftTabId(null);
+  }, []);
 
   // ----------------------------------------------------------------
   // loadStrategy — GET API → deserialize into workspace
@@ -231,7 +257,15 @@ export function useEditorTab(
     [workspacesRef, store],
   );
 
-  return { saveStrategy, loadStrategy, isSaving, loadingTabs };
+  return {
+    saveStrategy,
+    loadStrategy,
+    isSaving,
+    loadingTabs,
+    pendingDraftTabId,
+    confirmDraftSave,
+    cancelDraftSave,
+  };
 }
 
 // -----------------------------------------------------------------

@@ -33,8 +33,18 @@ import {
   LayoutGrid,
   Plus,
   FileCode2,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { TabBar } from "./tab-bar";
 import { EditorControlBar } from "./editor-control-bar";
 import { UnsavedChangesDialog } from "./unsaved-changes-dialog";
@@ -126,7 +136,14 @@ export function EditorShell() {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceFacade | null>(null);
 
   // [3.2.4] Save/Load strategy hook — wired to the workspace registry
-  const { saveStrategy, loadStrategy, isSaving } = useEditorTab(workspacesRef);
+  const {
+    saveStrategy,
+    loadStrategy,
+    isSaving,
+    pendingDraftTabId,
+    confirmDraftSave,
+    cancelDraftSave,
+  } = useEditorTab(workspacesRef);
 
   // [3.2.10] Navigate-away protection for dirty tabs
   const { dialogProps: unsavedDialogProps, requestNavigateAway } =
@@ -279,6 +296,33 @@ export function EditorShell() {
 
       {/* [3.2.10] Navigate-away warning dialog */}
       <UnsavedChangesDialog {...unsavedDialogProps} />
+
+      {/* Draft save confirmation dialog */}
+      <Dialog
+        open={pendingDraftTabId !== null}
+        onOpenChange={(open) => !open && cancelDraftSave()}
+      >
+        <DialogContent showCloseButton={false} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="size-5 text-[#FFAB40]" />
+              Chiến lược chưa hợp lệ
+            </DialogTitle>
+            <DialogDescription>
+              Chiến lược phải bắt đầu bằng khối Sự kiện (Event) và không có
+              khối nào rời rạc. Bạn có muốn lưu dưới dạng nháp không?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" size="sm" onClick={cancelDraftSave}>
+              Hủy
+            </Button>
+            <Button variant="default" size="sm" onClick={confirmDraftSave}>
+              Lưu nháp
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
