@@ -100,6 +100,43 @@ func chainBlocks(first, second map[string]interface{}) map[string]interface{} {
 	return first
 }
 
+// makeTradeSmartOrderWithShadows creates a trade_smart_order block using
+// shadow blocks for PRICE and QUANTITY inputs — this is the ACTUAL format
+// produced by Blockly 12 when the user edits the default placeholder values
+// without dragging separate blocks into the input slots.
+func makeTradeSmartOrderWithShadows(side, orderType string, leverage float64, marginType string, price, quantity float64) map[string]interface{} {
+	return map[string]interface{}{
+		"type": "trade_smart_order",
+		"id":   "trade_shadow_1",
+		"fields": map[string]interface{}{
+			"SIDE":        side,
+			"ORDER_TYPE":  orderType,
+			"LEVERAGE":    leverage,
+			"MARGIN_TYPE": marginType,
+		},
+		"inputs": map[string]interface{}{
+			"PRICE": map[string]interface{}{
+				"shadow": map[string]interface{}{
+					"type": "math_number",
+					"id":   "shadow_price_1",
+					"fields": map[string]interface{}{
+						"NUM": price,
+					},
+				},
+			},
+			"QUANTITY": map[string]interface{}{
+				"shadow": map[string]interface{}{
+					"type": "math_number",
+					"id":   "shadow_qty_1",
+					"fields": map[string]interface{}{
+						"NUM": quantity,
+					},
+				},
+			},
+		},
+	}
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  Stub CandleRepository for tests (implements repository.CandleRepository)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -115,8 +152,8 @@ func (r *stubCandleRepo) FindLatest(_ context.Context, _, _ string) (*domain.Can
 	c := r.candles[len(r.candles)-1]
 	return &c, nil
 }
-func (r *stubCandleRepo) InsertOne(_ context.Context, _ *domain.Candle) error        { return nil }
-func (r *stubCandleRepo) InsertBatch(_ context.Context, _ []domain.Candle) error      { return nil }
+func (r *stubCandleRepo) InsertOne(_ context.Context, _ *domain.Candle) error    { return nil }
+func (r *stubCandleRepo) InsertBatch(_ context.Context, _ []domain.Candle) error { return nil }
 func (r *stubCandleRepo) QueryCandles(_ context.Context, _, _ string, _, _ *time.Time, _ int) ([]domain.Candle, error) {
 	return r.candles, nil
 }
@@ -326,4 +363,63 @@ func TestOrderMatcher_FillsTrades(t *testing.T) {
 	}
 
 	t.Logf("✓ Full pipeline produced %d trades", len(result.Trades))
+}
+
+// TestShadowBlocks_ProduceTrades verifies the full pipeline works when the
+// strategy JSON uses shadow blocks (the ACTUAL format produced by Blockly 12
+// when users edit the default placeholder values in input slots).
+func TestShadowBlocks_ProduceTrades(t *testing.T) {
+	// Build strategy using shadow blocks — exactly as the frontend serializes it
+	buyBlock := makeTradeSmartOrderWithShadows("LONG", "MARKET", 1, "ISOLATED", 0, 0.001)
+	closeBlock := makeTradeClosePosition()
+	chainBlocks(buyBlock, closeBlock)
+
+	rootBlock := makeEventOnCandle("ON_CANDLE_CLOSE", "1m", buyBlock)
+	logicJSON := buildWorkspaceJSON(rootBlock)
+
+	t.Logf("Logic JSON (with shadows):\n%s", string(logicJSON))
+
+	candles := makeSampleCandles(10, 50000)
+	repo := &stubCandleRepo{candles: candles}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	sim := backtest.NewBacktestSimulator(repo, logger)
+
+	cfg := backtest.Config{
+		Symbol:         "BTCUSDT",
+		Timeframe:      "1m",
+		StartTime:      candles[0].OpenTime,
+		EndTime:        candles[len(candles)-1].OpenTime.Add(time.Minute),
+		InitialCapital: decimal.NewFromFloat(10000),
+		FeeRate:        decimal.NewFromFloat(0.0004),
+		MaxUnit:        1000,
+	}
+
+	var progress int32
+	output, err := sim.Run(context.Background(), cfg, logicJSON, &progress)
+	if err != nil {
+		t.Fatalf("Simulator.Run failed: %v", err)
+	}
+
+	totalOrders := 0
+	for _, exec := range output.Executions {
+		totalOrders += len(exec.OrdersSubmitted)
+	}
+	t.Logf("Total orders submitted (with shadow blocks): %d", totalOrders)
+
+	if totalOrders == 0 {
+		t.Fatal("FAIL: Shadow blocks produced 0 orders — GetInputBlock does not fall back to Shadow")
+	}
+
+	matcher := backtest.NewOrderMatcher(cfg.FeeRate, logger)
+	result, err := matcher.Match(context.Background(), output)
+	if err != nil {
+		t.Fatalf("OrderMatcher.Match failed: %v", err)
+	}
+
+	if len(result.Trades) == 0 {
+		t.Fatal("FAIL: Shadow block pipeline produced 0 trades")
+	}
+
+	t.Logf("✓ Shadow block pipeline produced %d trades", len(result.Trades))
 }

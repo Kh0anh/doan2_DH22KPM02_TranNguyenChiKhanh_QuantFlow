@@ -552,10 +552,59 @@ func (s *Simulator) Run(
 	// nextStatement connector of the event_on_candle root block.
 	bodyBlock := blockly.GetBodyBlock(root)
 
-	log.Info("backtest: strategy parsed",
+	// Debug: dump block tree structure to trace frontend-backend compatibility.
+	bodyIsNil := bodyBlock == nil
+	bodyType := ""
+	if bodyBlock != nil {
+		bodyType = bodyBlock.Type
+	}
+	hasNext := root.Next != nil
+	hasInputDO := false
+	if root.Inputs != nil {
+		_, hasInputDO = root.Inputs["DO"]
+	}
+	log.Debug("backtest: strategy parsed",
 		slog.String("trigger", trigger),
 		slog.String("strategy_timeframe", timeframe),
+		slog.Bool("body_is_nil", bodyIsNil),
+		slog.String("body_type", bodyType),
+		slog.Bool("root_has_next", hasNext),
+		slog.Bool("root_has_input_DO", hasInputDO),
 	)
+
+	// Debug: walk the body chain and log each block with its inputs
+	if bodyBlock != nil {
+		for cur := bodyBlock; cur != nil; {
+			inputNames := make([]string, 0)
+			if cur.Inputs != nil {
+				for name, slot := range cur.Inputs {
+					resolved := "empty"
+					if slot.Block != nil {
+						resolved = "block:" + slot.Block.Type
+					} else if slot.Shadow != nil {
+						resolved = "shadow:" + slot.Shadow.Type
+						if slot.Shadow.Fields != nil {
+							if num, ok := slot.Shadow.Fields["NUM"]; ok {
+								resolved += fmt.Sprintf("(NUM=%v)", num)
+							}
+						}
+					}
+					inputNames = append(inputNames, name+"="+resolved)
+				}
+			}
+			log.Debug("backtest: body block",
+				slog.String("type", cur.Type),
+				slog.String("id", cur.ID),
+				slog.Any("inputs", inputNames),
+				slog.Bool("has_next", cur.Next != nil),
+			)
+			if cur.Next != nil {
+				cur = cur.Next.Block
+			} else {
+				cur = nil
+			}
+		}
+	}
 
 	// ── Step 3: Initialise shared state ──────────────────────────────────────
 

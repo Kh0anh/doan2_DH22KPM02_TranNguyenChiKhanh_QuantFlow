@@ -284,9 +284,19 @@ func GetBlockMeta(blockType string) (BlockMeta, error) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // GetInputBlock safely retrieves the connected Block from a named input slot.
-// Returns nil if the input slot does not exist, is empty, or has no Block
-// connected (only a Shadow/placeholder). Callers must handle nil gracefully —
-// a nil input is treated as "unconnected" (zero/false depending on context).
+//
+// Blockly 12 input slots can hold two kinds of child block:
+//   - Block  — a user-connected block (explicitly dragged into the slot).
+//   - Shadow — a default placeholder block (set in the toolbox config).
+//
+// When the user edits a shadow block's fields (e.g., typing a number into
+// the default math_number placeholder), Blockly serializes it under the
+// "shadow" key — NOT under "block". If the user drags a separate block
+// into the slot, Blockly stores that under "block" (the shadow is hidden).
+//
+// Execution semantics: use Block if present (user explicitly connected
+// something), otherwise fall back to Shadow (the default placeholder value).
+// Returns nil only when the slot is truly empty (no block or shadow).
 func GetInputBlock(b *Block, inputName string) *Block {
 	if b == nil || b.Inputs == nil {
 		return nil
@@ -295,7 +305,11 @@ func GetInputBlock(b *Block, inputName string) *Block {
 	if !ok {
 		return nil
 	}
-	return slot.Block
+	// Prefer user-connected block; fall back to shadow (default placeholder).
+	if slot.Block != nil {
+		return slot.Block
+	}
+	return slot.Shadow
 }
 
 // GetBodyBlock resolves the strategy body (first child statement) from the
