@@ -1,6 +1,6 @@
 // ===================================================================
 // QuantFlow — Backtest Result Display
-// Task 3.4.2 — Performance Report Display
+// Task 3.4.2 + 3.4.3 — Performance Report + Equity Chart
 // ===================================================================
 //
 // Layout (frontend_flows.md §3.2.5 — State 3):
@@ -28,6 +28,14 @@ import {
   Settings2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import dynamic from "next/dynamic";
+
+// Dynamic import for Lightweight Charts (SSR incompatible)
+const EquityChart = dynamic(
+  () =>
+    import("@/components/trading/equity-chart").then((m) => m.EquityChart),
+  { ssr: false, loading: () => <div className="h-[120px] animate-pulse bg-muted/30 rounded" /> },
+);
 
 // -----------------------------------------------------------------
 // Types
@@ -78,62 +86,6 @@ function StatCard({
   );
 }
 
-// -----------------------------------------------------------------
-// Mini Equity Curve (pure CSS/SVG — no external chart lib needed)
-// -----------------------------------------------------------------
-
-function MiniEquityCurve({
-  data,
-}: {
-  data: { time: string; equity: number }[];
-}) {
-  if (data.length < 2) return null;
-
-  const values = data.map((d) => d.equity);
-  const minVal = Math.min(...values);
-  const maxVal = Math.max(...values);
-  const range = maxVal - minVal || 1;
-
-  const width = 500;
-  const height = 60;
-  const padding = 2;
-
-  const points = data.map((d, i) => {
-    const x = padding + (i / (data.length - 1)) * (width - 2 * padding);
-    const y =
-      height - padding - ((d.equity - minVal) / range) * (height - 2 * padding);
-    return `${x},${y}`;
-  });
-
-  const linePoints = points.join(" ");
-  const areaPoints = `${padding},${height - padding} ${linePoints} ${width - padding},${height - padding}`;
-
-  const isPositive = values[values.length - 1] >= values[0];
-
-  return (
-    <div className="w-full">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="w-full h-[60px]"
-        preserveAspectRatio="none"
-      >
-        {/* Area fill */}
-        <polygon
-          points={areaPoints}
-          fill={isPositive ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)"}
-        />
-        {/* Line */}
-        <polyline
-          points={linePoints}
-          fill="none"
-          stroke={isPositive ? "#22C55E" : "#EF4444"}
-          strokeWidth="1.5"
-          vectorEffect="non-scaling-stroke"
-        />
-      </svg>
-    </div>
-  );
-}
 
 // -----------------------------------------------------------------
 // Component
@@ -180,8 +132,8 @@ export function BacktestResultDisplay({
         />
       </div>
 
-      {/* Equity Curve */}
-      <div className="rounded-lg border border-border bg-card/50 p-2">
+      {/* Equity Curve — Task 3.4.3: Lightweight Charts */}
+      <div className="rounded-lg border border-border bg-card/50 p-2 flex-1 min-h-[100px]">
         <div className="flex items-center justify-between mb-1">
           <span className="text-[10px] text-muted-foreground font-medium">
             Equity Curve
@@ -190,7 +142,7 @@ export function BacktestResultDisplay({
             {result.totalTrades} lệnh
           </span>
         </div>
-        <MiniEquityCurve data={result.equityCurve} />
+        <EquityChart data={result.equityCurve} height={100} />
       </div>
 
       {/* Actions */}
