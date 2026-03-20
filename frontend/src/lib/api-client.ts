@@ -491,3 +491,83 @@ export interface BotLogsResponse {
   };
 }
 
+// -----------------------------------------------------------------
+// Trade History API (Task 3.3.6)
+// -----------------------------------------------------------------
+
+/** Trade record returned by GET /trades */
+export interface TradeRecordResponse {
+  id: string;
+  bot_id: string;
+  bot_name: string;
+  symbol: string;
+  side: "Long" | "Short";
+  quantity: number;
+  fill_price: number;
+  fee: number;
+  realized_pnl: number;
+  status: "Filled" | "Canceled";
+  executed_at: string;
+}
+
+/** Full response from GET /trades */
+export interface TradesListResponse {
+  data: TradeRecordResponse[];
+  pagination: {
+    next_cursor: string | null;
+    has_more: boolean;
+  };
+  message?: string;
+}
+
+/** Filter params for GET /trades */
+export interface TradeFilterParams {
+  bot_id?: string;
+  symbol?: string;
+  side?: string;
+  status?: string;
+  start_date?: string;
+  end_date?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export const tradeApi = {
+  /** GET /trades — List trade history with filters and cursor pagination */
+  async list(params?: TradeFilterParams): Promise<TradesListResponse> {
+    const query = new URLSearchParams();
+    if (params?.bot_id) query.set("bot_id", params.bot_id);
+    if (params?.symbol) query.set("symbol", params.symbol);
+    if (params?.side) query.set("side", params.side);
+    if (params?.status) query.set("status", params.status);
+    if (params?.start_date) query.set("start_date", params.start_date);
+    if (params?.end_date) query.set("end_date", params.end_date);
+    if (params?.cursor) query.set("cursor", params.cursor);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const qs = query.toString();
+    const res = await apiFetch<TradesListResponse>(
+      `/trades${qs ? `?${qs}` : ""}`,
+    );
+    return res;
+  },
+
+  /** GET /trades/export — Download CSV file */
+  async exportCSV(params?: {
+    bot_id?: string;
+    symbol?: string;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<Blob> {
+    const query = new URLSearchParams();
+    if (params?.bot_id) query.set("bot_id", params.bot_id);
+    if (params?.symbol) query.set("symbol", params.symbol);
+    if (params?.start_date) query.set("start_date", params.start_date);
+    if (params?.end_date) query.set("end_date", params.end_date);
+    const qs = query.toString();
+    const url = `${process.env.NEXT_PUBLIC_API_URL ?? "/api/v1"}/trades/export${qs ? `?${qs}` : ""}`;
+    const res = await fetch(url, { credentials: "include" });
+    if (!res.ok) throw new Error("CSV export failed");
+    return res.blob();
+  },
+};
+

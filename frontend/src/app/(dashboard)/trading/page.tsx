@@ -12,7 +12,9 @@
  * Task 3.3.1: MarketWatch component (implemented)
  * Task 3.3.2: CandleChart component (implemented)
  * Task 3.3.3: BotPanel component (implemented)
- * Tasks 3.3.4–3.3.6: Backtest, History (future tasks — placeholder)
+ * Task 3.3.4: BotLogsConsole component (implemented)
+ * Task 3.3.5: PositionDisplay component (implemented)
+ * Task 3.3.6: TradeHistoryPanel component (implemented)
  */
 
 "use client";
@@ -21,6 +23,7 @@ import { useState } from "react";
 import { MarketWatch } from "@/components/trading/market-watch";
 import { CandleChart } from "@/components/trading/candle-chart";
 import { BotPanel } from "@/components/trading/bot-panel";
+import { TradeHistoryPanel } from "@/components/trading/trade-history-panel";
 import { FlaskConical, History, Bot } from "lucide-react";
 
 // -----------------------------------------------------------------
@@ -94,16 +97,7 @@ export default function TradingPage() {
                 </div>
               </div>
             )}
-            {activeTab === "history" && (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center">
-                  <History className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    📋 Trade History Panel — Task 3.3.5
-                  </p>
-                </div>
-              </div>
-            )}
+            {activeTab === "history" && <TradeHistoryPanel />}
           </div>
         </div>
       </div>
