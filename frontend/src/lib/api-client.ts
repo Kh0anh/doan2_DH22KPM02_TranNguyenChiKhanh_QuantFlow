@@ -124,7 +124,66 @@ interface UpdateStrategyResponse {
   };
 }
 
+// -----------------------------------------------------------------
+// Strategy List API types (Task 3.2.6)
+// -----------------------------------------------------------------
+
+/** Response from GET /strategies (paginated list) */
+interface ListStrategiesResponse {
+  data: {
+    id: string;
+    name: string;
+    version: number;
+    status: string;
+    created_at: string;
+    updated_at: string;
+  }[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    total_pages: number;
+  };
+}
+
+/** Response from POST /strategies/import */
+interface ImportStrategyResponse {
+  message: string;
+  data: {
+    id: string;
+    name: string;
+    version: number;
+    status: string;
+    created_at: string;
+  };
+}
+
+/** Response from GET /strategies/{id}/export */
+interface ExportStrategyResponse {
+  name: string;
+  logic_json: Record<string, unknown>;
+  version: number;
+  exported_at: string;
+}
+
 export const strategyApi = {
+  /**
+   * GET /strategies — List strategies with pagination and search.
+   * Used by the Strategy List Page (Task 3.2.6).
+   */
+  async list(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+  }): Promise<ListStrategiesResponse> {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    const qs = query.toString();
+    return apiFetch<ListStrategiesResponse>(`/strategies${qs ? `?${qs}` : ""}`);
+  },
+
   /**
    * GET /strategies/{id} — Load strategy detail including logic_json.
    * Used by use-editor-tab to load blocks into Blockly workspace.
@@ -167,5 +226,53 @@ export const strategyApi = {
       body: JSON.stringify(data),
     });
     return res.data;
+  },
+
+  /**
+   * DELETE /strategies/{id} — Delete a strategy.
+   * Returns 409 if strategy is in use by a running Bot.
+   * Used by the Strategy List Page delete action (Task 3.2.6).
+   */
+  async delete(id: string): Promise<void> {
+    await apiFetch<{ message: string }>(`/strategies/${id}`, {
+      method: "DELETE",
+    });
+  },
+
+  /**
+   * POST /strategies/import — Import strategy from JSON data.
+   * Used by the "Nhập từ file" button on Strategy List Page (Task 3.2.6).
+   */
+  async importStrategy(data: {
+    name: string;
+    logic_json: Record<string, unknown>;
+  }): Promise<ImportStrategyResponse["data"]> {
+    const res = await apiFetch<ImportStrategyResponse>("/strategies/import", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    return res.data;
+  },
+
+  /**
+   * GET /strategies/{id}/export — Export strategy as JSON download.
+   * Triggers a .json file download via Blob API (SRS FR-DESIGN-12).
+   * Used by the "Xuất JSON" action on Strategy List Page (Task 3.2.6).
+   */
+  async exportStrategy(id: string, fileName: string): Promise<void> {
+    const data = await apiFetch<ExportStrategyResponse>(
+      `/strategies/${id}/export`,
+    );
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${fileName.replace(/\s+/g, "-").toLowerCase()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   },
 };
