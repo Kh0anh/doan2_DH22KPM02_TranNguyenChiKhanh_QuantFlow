@@ -363,3 +363,99 @@ export interface CandleDataResponse {
   markers: TradeMarkerResponse[];
 }
 
+// -----------------------------------------------------------------
+// Bot API (Task 3.3.3)
+// -----------------------------------------------------------------
+
+/** Bot summary returned by GET /bots (snake_case from backend) */
+export interface BotSummaryResponse {
+  id: string;
+  bot_name: string;
+  strategy_id: string;
+  strategy_name: string;
+  strategy_version: number;
+  symbol: string;
+  status: "Running" | "Stopped" | "Error";
+  total_pnl: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Bot detail returned by GET /bots/{id} */
+export interface BotDetailResponse extends BotSummaryResponse {
+  position: {
+    side: "Long" | "Short";
+    entry_price: number;
+    quantity: number;
+    leverage: number;
+    unrealized_pnl: number;
+    margin_type: "Isolated" | "Cross";
+  } | null;
+  open_orders: {
+    order_id: string;
+    side: "Buy" | "Sell";
+    type: "Limit" | "Market" | "Stop";
+    price: number;
+    quantity: number;
+    status: string;
+  }[];
+}
+
+export const botApi = {
+  /** GET /bots — List all bots, optionally filtered by status */
+  async list(status?: string): Promise<BotSummaryResponse[]> {
+    const query = status ? `?status=${status}` : "";
+    const res = await apiFetch<{ data: BotSummaryResponse[] }>(
+      `/bots${query}`,
+    );
+    return res.data;
+  },
+
+  /** POST /bots — Create a new bot */
+  async create(params: {
+    bot_name: string;
+    strategy_id: string;
+    symbol: string;
+  }): Promise<BotSummaryResponse> {
+    const res = await apiFetch<{ data: BotSummaryResponse }>("/bots", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+    return res.data;
+  },
+
+  /** GET /bots/{id} — Get bot detail (position + open orders) */
+  async getDetail(id: string): Promise<BotDetailResponse> {
+    const res = await apiFetch<{ data: BotDetailResponse }>(`/bots/${id}`);
+    return res.data;
+  },
+
+  /** DELETE /bots/{id} — Delete a stopped bot */
+  async delete(id: string): Promise<void> {
+    await apiFetch(`/bots/${id}`, { method: "DELETE" });
+  },
+
+  /** POST /bots/{id}/start — Start a stopped bot */
+  async start(id: string): Promise<{ status: string }> {
+    const res = await apiFetch<{ data: { status: string } }>(
+      `/bots/${id}/start`,
+      { method: "POST" },
+    );
+    return res.data;
+  },
+
+  /** POST /bots/{id}/stop — Stop a running bot */
+  async stop(
+    id: string,
+    closePosition: boolean = false,
+  ): Promise<{ status: string; total_pnl: number }> {
+    const res = await apiFetch<{
+      data: { status: string; total_pnl: number };
+    }>(`/bots/${id}/stop`, {
+      method: "POST",
+      body: JSON.stringify({ close_position: closePosition }),
+    });
+    return res.data;
+  },
+};
+
