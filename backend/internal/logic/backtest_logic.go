@@ -35,6 +35,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kh0anh/quantflow/internal/engine/backtest"
+	"github.com/kh0anh/quantflow/internal/engine/blockly"
 	"github.com/kh0anh/quantflow/internal/repository"
 	"github.com/shopspring/decimal"
 )
@@ -79,10 +80,12 @@ var (
 // CreateBacktestInput carries the validated fields parsed from the
 // CreateBacktestRequest body (api.yaml §CreateBacktestRequest).
 // Populated by BacktestHandler.Create after JSON decode and field validation.
+//
+// Note: Timeframe is NOT included — it is extracted from the strategy's
+// logic_json (root event_on_candle block) by CreateBacktest itself.
 type CreateBacktestInput struct {
 	StrategyID     string
 	Symbol         string
-	Timeframe      string
 	StartTime      time.Time
 	EndTime        time.Time
 	InitialCapital decimal.Decimal
@@ -327,6 +330,15 @@ func (l *BacktestLogic) CreateBacktest(
 	logicJSON := make([]byte, len(detail.LogicJSON))
 	copy(logicJSON, detail.LogicJSON)
 
+	// Extract timeframe from the strategy's logic_json (root event_on_candle
+	// block). This is the single source of truth — the POST request does not
+	// carry a timeframe field to avoid duplication and potential mismatches.
+	root, err := blockly.ParseLogicJSON(logicJSON)
+	if err != nil {
+		return nil, fmt.Errorf("backtest_logic: CreateBacktest: parse logic_json: %w", err)
+	}
+	_, timeframe := blockly.ExtractEventMeta(root)
+
 	maxUnit := req.MaxUnit
 	if maxUnit <= 0 {
 		maxUnit = defaultBacktestMaxUnit
@@ -337,7 +349,7 @@ func (l *BacktestLogic) CreateBacktest(
 		// so the strategy ID is used here for informational tracing only.
 		StrategyVersionID: req.StrategyID,
 		Symbol:            req.Symbol,
-		Timeframe:         req.Timeframe,
+		Timeframe:         timeframe,
 		StartTime:         req.StartTime,
 		EndTime:           req.EndTime,
 		InitialCapital:    req.InitialCapital,
@@ -359,7 +371,7 @@ func (l *BacktestLogic) CreateBacktest(
 			StrategyID:     req.StrategyID,
 			StrategyName:   detail.Name,
 			Symbol:         req.Symbol,
-			Timeframe:      req.Timeframe,
+			Timeframe:      timeframe,
 			StartTime:      req.StartTime,
 			EndTime:        req.EndTime,
 			InitialCapital: req.InitialCapital,
@@ -375,7 +387,7 @@ func (l *BacktestLogic) CreateBacktest(
 		slog.String("backtest_id", job.id),
 		slog.String("user_id", userID),
 		slog.String("symbol", req.Symbol),
-		slog.String("timeframe", req.Timeframe),
+		slog.String("timeframe", timeframe),
 	)
 
 	return job, nil

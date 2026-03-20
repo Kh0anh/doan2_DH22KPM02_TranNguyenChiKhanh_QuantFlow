@@ -42,21 +42,19 @@ func NewBacktestHandler(backtestLogic *logic.BacktestLogic) *BacktestHandler {
 // Monetary fields (initial_capital, fee_rate) are decoded as float64 and
 // immediately promoted to decimal.Decimal to preserve precision downstream
 // (cursorrules §6.5 — no float64 in financial arithmetic).
+//
+// Note: Timeframe is NOT part of the request — it is extracted from the
+// strategy's logic_json (the root event_on_candle block's TIMEFRAME field)
+// by the logic layer. This avoids duplication and prevents mismatches between
+// the strategy definition and the backtest configuration.
 type createBacktestRequest struct {
 	StrategyID     string  `json:"strategy_id"`
 	Symbol         string  `json:"symbol"`
-	Timeframe      string  `json:"timeframe"`
 	StartTime      string  `json:"start_time"` // RFC 3339
 	EndTime        string  `json:"end_time"`   // RFC 3339
 	InitialCapital float64 `json:"initial_capital"`
 	FeeRate        float64 `json:"fee_rate"`
 	MaxUnit        int     `json:"max_unit"` // optional; 0 → engine default (1000)
-}
-
-// validBacktestTimeframes is the set of timeframe values accepted by the backtest API.
-// Mirrors api.yaml §CreateBacktestRequest.timeframe enum.
-var validBacktestTimeframes = map[string]struct{}{
-	"1m": {}, "5m": {}, "15m": {}, "1h": {}, "4h": {}, "1D": {},
 }
 
 // Create handles POST /api/v1/backtests.
@@ -87,21 +85,14 @@ func (h *BacktestHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// Trim all string fields before validation to tolerate accidental whitespace.
 	req.StrategyID = strings.TrimSpace(req.StrategyID)
 	req.Symbol = strings.TrimSpace(req.Symbol)
-	req.Timeframe = strings.TrimSpace(req.Timeframe)
 	req.StartTime = strings.TrimSpace(req.StartTime)
 	req.EndTime = strings.TrimSpace(req.EndTime)
 
-	if req.StrategyID == "" || req.Symbol == "" || req.Timeframe == "" ||
+	if req.StrategyID == "" || req.Symbol == "" ||
 		req.StartTime == "" || req.EndTime == "" ||
 		req.InitialCapital <= 0 || req.FeeRate < 0 {
 		response.Error(w, http.StatusBadRequest, "MISSING_REQUIRED_FIELDS",
-			"strategy_id, symbol, timeframe, start_time, end_time, initial_capital, and fee_rate are required.")
-		return
-	}
-
-	if _, ok := validBacktestTimeframes[req.Timeframe]; !ok {
-		response.Error(w, http.StatusBadRequest, "MISSING_REQUIRED_FIELDS",
-			"timeframe must be one of: 1m, 5m, 15m, 1h, 4h, 1D.")
+			"strategy_id, symbol, start_time, end_time, initial_capital, and fee_rate are required.")
 		return
 	}
 
@@ -128,7 +119,6 @@ func (h *BacktestHandler) Create(w http.ResponseWriter, r *http.Request) {
 	input := logic.CreateBacktestInput{
 		StrategyID:     req.StrategyID,
 		Symbol:         req.Symbol,
-		Timeframe:      req.Timeframe,
 		StartTime:      startTime,
 		EndTime:        endTime,
 		InitialCapital: decimal.NewFromFloat(req.InitialCapital),
