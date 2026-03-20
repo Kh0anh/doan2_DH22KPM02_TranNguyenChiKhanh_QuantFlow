@@ -193,7 +193,7 @@ func makeSampleCandles(n int, basePrice float64) []domain.Candle {
 // ═══════════════════════════════════════════════════════════════════════════
 
 func TestParseLogicJSON_ResolvesBodyFromNext(t *testing.T) {
-	tradeBlock := makeTradeSmartOrder("LONG", "MARKET", 1, "ISOLATED", 0, 0.001)
+	tradeBlock := makeTradeSmartOrder("LONG", "MARKET", 1, "ISOLATED", 0, 100)
 	rootBlock := makeEventOnCandle("ON_CANDLE_CLOSE", "1m", tradeBlock)
 	logicJSON := buildWorkspaceJSON(rootBlock)
 
@@ -251,8 +251,8 @@ func TestExtractEventMeta(t *testing.T) {
 }
 
 func TestSimulator_ProducesOrders(t *testing.T) {
-	// Strategy: on candle close → buy 0.001 BTC MARKET LONG
-	tradeBlock := makeTradeSmartOrder("LONG", "MARKET", 1, "ISOLATED", 0, 0.001)
+	// Strategy: on candle close → buy 100 USDT worth of BTC MARKET LONG
+	tradeBlock := makeTradeSmartOrder("LONG", "MARKET", 1, "ISOLATED", 0, 100)
 	rootBlock := makeEventOnCandle("ON_CANDLE_CLOSE", "1m", tradeBlock)
 	logicJSON := buildWorkspaceJSON(rootBlock)
 
@@ -295,8 +295,8 @@ func TestSimulator_ProducesOrders(t *testing.T) {
 }
 
 func TestOrderMatcher_FillsTrades(t *testing.T) {
-	// Strategy: on candle close → buy 0.001 BTC MARKET LONG → close position
-	buyBlock := makeTradeSmartOrder("LONG", "MARKET", 1, "ISOLATED", 0, 0.001)
+	// Strategy: on candle close → buy 100 USDT worth of BTC MARKET LONG → close position
+	buyBlock := makeTradeSmartOrder("LONG", "MARKET", 1, "ISOLATED", 0, 100)
 	closeBlock := makeTradeClosePosition()
 	chainBlocks(buyBlock, closeBlock)
 
@@ -370,7 +370,7 @@ func TestOrderMatcher_FillsTrades(t *testing.T) {
 // when users edit the default placeholder values in input slots).
 func TestShadowBlocks_ProduceTrades(t *testing.T) {
 	// Build strategy using shadow blocks — exactly as the frontend serializes it
-	buyBlock := makeTradeSmartOrderWithShadows("LONG", "MARKET", 1, "ISOLATED", 0, 0.001)
+	buyBlock := makeTradeSmartOrderWithShadows("LONG", "MARKET", 1, "ISOLATED", 0, 100)
 	closeBlock := makeTradeClosePosition()
 	chainBlocks(buyBlock, closeBlock)
 

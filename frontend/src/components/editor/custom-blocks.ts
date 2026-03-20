@@ -719,7 +719,7 @@ const BLOCK_DEFINITIONS: JsonBlockDef[] = [
         check: "Number",
       },
     ],
-    message3: "Khối lượng %1",
+    message3: "Khối lượng (USDT) %1",
     args3: [
       {
         type: "input_value",
@@ -753,7 +753,7 @@ const BLOCK_DEFINITIONS: JsonBlockDef[] = [
     nextStatement: null,
     colour: 0,
     tooltip:
-      "Đặt lệnh giao dịch Futures cho cặp tiền hiện tại (Current_Symbol). Backend sẽ tự kiểm tra và điều chỉnh Đòn bẩy/Ký quỹ trên sàn trước khi gửi lệnh. Với lệnh Market, tham số Giá sẽ bị bỏ qua.",
+      "Đặt lệnh giao dịch Futures cho cặp tiền hiện tại (Current_Symbol). Khối lượng tính bằng USDT — hệ thống tự quy đổi sang base asset (ví dụ: 100 USDT ≈ 0.0013 BTC). Backend sẽ tự kiểm tra và điều chỉnh Đòn bẩy/Ký quỹ trên sàn trước khi gửi lệnh. Với lệnh Market, tham số Giá sẽ bị bỏ qua.",
     helpUrl: "",
   },
 

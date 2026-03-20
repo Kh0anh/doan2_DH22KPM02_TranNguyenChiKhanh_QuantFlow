@@ -73,7 +73,7 @@ func init() {
 //	LEVERAGE    field_number    1–125 (floored to int; default 1)
 //	MARGIN_TYPE field_dropdown  "ISOLATED" | "CROSSED"
 //	PRICE       input_value     Number — limit price; 0 for MARKET orders
-//	QUANTITY    input_value     Number — order quantity in base asset (e.g. BTC)
+// QUANTITY    input_value     Number — order size in USDT (quote asset)
 //
 // Unit cost: 10 (charged by ExecuteBlock).
 func executeTradeSmartOrder(ctx *ExecutionContext, block *Block) (interface{}, error) {
@@ -113,20 +113,47 @@ func executeTradeSmartOrder(ctx *ExecutionContext, block *Block) (interface{}, e
 	if err != nil {
 		return nil, fmt.Errorf("trade_smart_order (block_id=%s): eval QUANTITY: %w", block.ID, err)
 	}
-	quantity := toDecimal(qtyVal)
+	usdtQty := toDecimal(qtyVal)
 
 	// ── Guard: non-positive quantity — skip silently (no-op) ────────────────
 	// Dynamic quantity formulas (e.g. balance÷price) may evaluate to ≤ 0 on
 	// certain candles (insufficient balance, etc.). Treat as a no-op rather
 	// than a fatal session error so subsequent blocks can still execute.
-	if quantity.LessThanOrEqual(decimal.Zero) {
+	if usdtQty.LessThanOrEqual(decimal.Zero) {
 		ctx.Logger.Warn("trade_smart_order: quantity <= 0 — skipping order",
 			slog.String("block_id", block.ID),
-			slog.String("quantity", quantity.String()),
+			slog.String("usdt_quantity", usdtQty.String()),
 			slog.String("symbol", ctx.Symbol),
 		)
 		return nil, nil
 	}
+
+	// ── Convert USDT quantity → base asset quantity ──────────────────────────
+	// The user specifies QUANTITY in USDT (quote asset). Binance Futures API
+	// expects quantity in base asset (e.g. BTC). Convert using:
+	//   baseQty = usdtQty / currentPrice
+	// For MARKET orders, fetch the live/simulated price via GetLastPrice.
+	// For LIMIT orders, use the user-supplied limit price as the reference.
+	var refPrice decimal.Decimal
+	if orderType == "MARKET" || price.IsZero() {
+		refPrice, err = ctx.TradingProxy.GetLastPrice(ctx.Ctx, ctx.Symbol)
+		if err != nil {
+			return nil, fmt.Errorf("trade_smart_order (block_id=%s): GetLastPrice for USDT→base conversion: %w", block.ID, err)
+		}
+	} else {
+		refPrice = price
+	}
+
+	if refPrice.IsZero() {
+		ctx.Logger.Warn("trade_smart_order: reference price is 0 — skipping order",
+			slog.String("block_id", block.ID),
+			slog.String("symbol", ctx.Symbol),
+		)
+		return nil, nil
+	}
+
+	// baseQty = usdtQty / refPrice
+	quantity := usdtQty.Div(refPrice)
 
 	// ── Delegate to exchange proxy ────────────────────────────────────────────
 	if err := ctx.TradingProxy.SmartOrder(
@@ -144,7 +171,8 @@ func executeTradeSmartOrder(ctx *ExecutionContext, block *Block) (interface{}, e
 		slog.Int("leverage", leverage),
 		slog.String("margin_type", marginType),
 		slog.String("price", price.String()),
-		slog.String("quantity", quantity.String()),
+		slog.String("usdt_quantity", usdtQty.String()),
+		slog.String("base_quantity", quantity.String()),
 	)
 	return nil, nil
 }
