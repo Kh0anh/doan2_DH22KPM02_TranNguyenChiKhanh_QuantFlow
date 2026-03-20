@@ -1,0 +1,201 @@
+// ===================================================================
+// QuantFlow — useBotLogs Hook
+// Task 3.3.4 — Bot Logs Console
+// ===================================================================
+//
+// Responsibilities:
+//   - Fetch historical logs from GET /bots/{id}/logs (with mock fallback)
+//   - Simulate real-time log append (until WS Task 3.4.4)
+//   - Limit buffer to 1000 lines (virtual scroll requirement)
+//   - Provide cursor for loading older logs
+// ===================================================================
+
+"use client";
+
+import { useState, useEffect, useCallback, useRef } from "react";
+import { botApi } from "@/lib/api-client";
+
+// -----------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------
+
+export interface LogEntry {
+  id: number;
+  timestamp: string;        // ISO string
+  formattedTime: string;    // [HH:MM:SS]
+  level: "info" | "order" | "skip" | "error";
+  message: string;
+}
+
+const MAX_LOG_LINES = 1000;
+
+// -----------------------------------------------------------------
+// Mock log generator
+// -----------------------------------------------------------------
+
+const MOCK_MESSAGES: { msg: string; level: LogEntry["level"]; action: string | null }[] = [
+  { msg: "Session #%d triggered", level: "info", action: null },
+  { msg: "RSI(15m,14) = %v", level: "info", action: null },
+  { msg: "EMA(9) = %v, EMA(21) = %v → Crossover detected", level: "info", action: null },
+  { msg: "→ LONG BTCUSDT Qty=0.01 → ORDER_PLACED", level: "order", action: "Đặt lệnh Long" },
+  { msg: "→ SHORT ETHUSDT Qty=0.5 → ORDER_PLACED", level: "order", action: "Đặt lệnh Short" },
+  { msg: "Unit used: %d/1000", level: "info", action: null },
+  { msg: "Điều kiện chưa thỏa → SKIP", level: "skip", action: "Bỏ qua" },
+  { msg: "Bollinger Band Width = 0.032, chưa đủ biến động → SKIP", level: "skip", action: "Bỏ qua" },
+  { msg: "Lỗi kết nối sàn: timeout after 5000ms", level: "error", action: null },
+  { msg: "Stop Loss triggered @ %v", level: "order", action: "Stop Loss" },
+  { msg: "Take Profit triggered @ %v", level: "order", action: "Take Profit" },
+];
+
+function formatTime(date: Date): string {
+  const h = String(date.getHours()).padStart(2, "0");
+  const m = String(date.getMinutes()).padStart(2, "0");
+  const s = String(date.getSeconds()).padStart(2, "0");
+  return `[${h}:${m}:${s}]`;
+}
+
+function generateMockLogs(count: number): LogEntry[] {
+  const logs: LogEntry[] = [];
+  const now = Date.now();
+  let sessionNum = 130;
+
+  for (let i = 0; i < count; i++) {
+    const template = MOCK_MESSAGES[i % MOCK_MESSAGES.length];
+    const time = new Date(now - (count - i) * 3000);
+    let msg = template.msg;
+
+    // Replace placeholders
+    msg = msg.replace("%d", String(sessionNum + Math.floor(i / 4)));
+    msg = msg.replace("%v", String(Math.round((30 + Math.random() * 40) * 100) / 100));
+    msg = msg.replaceAll("%v", String(Math.round((60000 + Math.random() * 8000) * 100) / 100));
+
+    logs.push({
+      id: 10000 + i,
+      timestamp: time.toISOString(),
+      formattedTime: formatTime(time),
+      level: template.level,
+      message: msg,
+    });
+  }
+
+  return logs;
+}
+
+// -----------------------------------------------------------------
+// Hook
+// -----------------------------------------------------------------
+
+export function useBotLogs(botId: string) {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
+  const cursorRef = useRef<string | null>(null);
+
+  // ------- Fetch initial logs -------
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchLogs() {
+      setIsLoading(true);
+      try {
+        const res = await botApi.getLogs(botId, { limit: 50 });
+        if (cancelled) return;
+
+        const mapped: LogEntry[] = res.data.map((entry) => {
+          const time = new Date(entry.created_at);
+          let level: LogEntry["level"] = "info";
+          if (entry.action_decision?.includes("lệnh")) level = "order";
+          else if (entry.action_decision?.includes("Bỏ qua")) level = "skip";
+          else if (entry.message.toLowerCase().includes("lỗi") || entry.message.toLowerCase().includes("error")) level = "error";
+
+          return {
+            id: entry.id,
+            timestamp: entry.created_at,
+            formattedTime: formatTime(time),
+            level,
+            message: entry.action_decision
+              ? `[${entry.action_decision}] ${entry.message}`
+              : entry.message,
+          };
+        });
+
+        setLogs(mapped);
+        setHasMore(res.pagination.has_more);
+        cursorRef.current = res.pagination.next_cursor;
+      } catch {
+        // Mock fallback
+        if (cancelled) return;
+        const mockLogs = generateMockLogs(40);
+        setLogs(mockLogs);
+        setHasMore(false);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+
+    fetchLogs();
+    return () => { cancelled = true; };
+  }, [botId]);
+
+  // ------- Mock real-time log append (remove when Task 3.4.4) -------
+  useEffect(() => {
+    if (isLoading) return;
+
+    let idCounter = 20000;
+    const interval = setInterval(() => {
+      const template = MOCK_MESSAGES[Math.floor(Math.random() * MOCK_MESSAGES.length)];
+      const now = new Date();
+      let msg = template.msg;
+      msg = msg.replace("%d", String(140 + Math.floor(Math.random() * 20)));
+      msg = msg.replace("%v", String(Math.round((30 + Math.random() * 40) * 100) / 100));
+      msg = msg.replaceAll("%v", String(Math.round((60000 + Math.random() * 8000) * 100) / 100));
+
+      const newEntry: LogEntry = {
+        id: idCounter++,
+        timestamp: now.toISOString(),
+        formattedTime: formatTime(now),
+        level: template.level,
+        message: msg,
+      };
+
+      setLogs((prev) => {
+        const next = [...prev, newEntry];
+        // Cap at MAX_LOG_LINES
+        if (next.length > MAX_LOG_LINES) {
+          return next.slice(next.length - MAX_LOG_LINES);
+        }
+        return next;
+      });
+    }, 3000 + Math.random() * 2000);
+
+    return () => clearInterval(interval);
+  }, [isLoading]);
+
+  // ------- Load more (older logs) -------
+  const loadMore = useCallback(async () => {
+    if (!cursorRef.current || !hasMore) return;
+    try {
+      const res = await botApi.getLogs(botId, {
+        cursor: cursorRef.current,
+        limit: 50,
+      });
+      const mapped: LogEntry[] = res.data.map((entry) => {
+        const time = new Date(entry.created_at);
+        return {
+          id: entry.id,
+          timestamp: entry.created_at,
+          formattedTime: formatTime(time),
+          level: "info" as const,
+          message: entry.message,
+        };
+      });
+      setLogs((prev) => [...mapped, ...prev].slice(-MAX_LOG_LINES));
+      setHasMore(res.pagination.has_more);
+      cursorRef.current = res.pagination.next_cursor;
+    } catch {
+      // Silently fail in mock mode
+    }
+  }, [botId, hasMore]);
+
+  return { logs, isLoading, hasMore, loadMore };
+}

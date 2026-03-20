@@ -30,6 +30,7 @@ import {
   Trash2,
   Bot,
   Loader2,
+  Terminal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,6 +42,7 @@ import {
 import { useBotData, type BotItem } from "@/lib/hooks/use-bot-data";
 import { CreateBotDialog } from "@/components/trading/create-bot-dialog";
 import { StopBotDialog } from "@/components/trading/stop-bot-dialog";
+import { BotLogsConsole } from "@/components/trading/bot-logs-console";
 import { toast } from "sonner";
 
 // -----------------------------------------------------------------
@@ -104,6 +106,7 @@ function BotRow({
   onStop,
   onStart,
   onDelete,
+  onViewLogs,
 }: {
   bot: BotItem;
   isExpanded: boolean;
@@ -111,6 +114,7 @@ function BotRow({
   onStop: () => void;
   onStart: () => void;
   onDelete: () => void;
+  onViewLogs: () => void;
 }) {
   const isRunning = bot.status === "Running";
   const isStopped = bot.status === "Stopped";
@@ -187,6 +191,10 @@ function BotRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-32">
+              <DropdownMenuItem onClick={onViewLogs}>
+                <Terminal className="mr-2 h-3.5 w-3.5" />
+                Logs
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={onDelete}
                 disabled={isRunning}
@@ -325,6 +333,10 @@ export function BotPanel() {
     id: string;
     name: string;
   } | null>(null);
+  const [logsTarget, setLogsTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   // ------- Handlers -------
 
@@ -427,6 +439,7 @@ export function BotPanel() {
               onStop={() => setStopTarget({ id: bot.id, name: bot.name })}
               onStart={() => handleStart(bot)}
               onDelete={() => handleDelete(bot)}
+              onViewLogs={() => setLogsTarget({ id: bot.id, name: bot.name })}
             />
           ))
         )}
@@ -446,6 +459,14 @@ export function BotPanel() {
           botName={stopTarget.name}
           botId={stopTarget.id}
           onConfirm={handleStopConfirm}
+        />
+      )}
+
+      {logsTarget && (
+        <BotLogsConsole
+          botId={logsTarget.id}
+          botName={logsTarget.name}
+          onClose={() => setLogsTarget(null)}
         />
       )}
     </div>

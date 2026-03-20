@@ -457,5 +457,37 @@ export const botApi = {
     });
     return res.data;
   },
+
+  /** GET /bots/{id}/logs — Fetch bot activity logs (cursor pagination) */
+  async getLogs(
+    id: string,
+    params?: { cursor?: string; limit?: number },
+  ): Promise<BotLogsResponse> {
+    const query = new URLSearchParams();
+    if (params?.cursor) query.set("cursor", params.cursor);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const qs = query.toString();
+    const res = await apiFetch<BotLogsResponse>(
+      `/bots/${id}/logs${qs ? `?${qs}` : ""}`,
+    );
+    return res;
+  },
 };
+
+/** Single log entry from GET /bots/{id}/logs */
+export interface BotLogEntryResponse {
+  id: number;
+  action_decision: string | null;
+  message: string;
+  created_at: string;
+}
+
+/** Full response from GET /bots/{id}/logs */
+export interface BotLogsResponse {
+  data: BotLogEntryResponse[];
+  pagination: {
+    next_cursor: string | null;
+    has_more: boolean;
+  };
+}
 
