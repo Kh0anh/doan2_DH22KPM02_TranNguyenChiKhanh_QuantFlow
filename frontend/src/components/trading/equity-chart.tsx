@@ -34,14 +34,23 @@ export function EquityChart({ data, height = 120 }: EquityChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
 
-  // Convert ISO timestamps to YYYY-MM-DD for Lightweight Charts
+  // Convert ISO timestamps to YYYY-MM-DD for Lightweight Charts.
+  // Multiple equity points may share the same date (intraday timeframes),
+  // so deduplicate by keeping only the last value per day.
   const chartData = useMemo(() => {
-    return data
+    const sorted = data
       .map((d) => ({
         time: d.time.slice(0, 10) as string,
         value: d.equity,
       }))
       .sort((a, b) => a.time.localeCompare(b.time));
+
+    // Deduplicate: keep last entry per date (Map insertion order)
+    const byDate = new Map<string, { time: string; value: number }>();
+    for (const point of sorted) {
+      byDate.set(point.time, point);
+    }
+    return Array.from(byDate.values());
   }, [data]);
 
   // Determine if positive performance
