@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import { EditorTab } from "@/types";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
@@ -39,7 +40,9 @@ interface EditorStoreState {
   closeAllTabs: () => void;
 }
 
-export const useEditorStore = create<EditorStoreState>((set, get) => ({
+export const useEditorStore = create<EditorStoreState>()(
+  persist(
+    (set, get) => ({
   tabs: [],
   activeTabId: null,
 
@@ -121,4 +124,14 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
     })),
 
   closeAllTabs: () => set({ tabs: [], activeTabId: null }),
-}));
+    }),
+    {
+      name: "quantflow-editor-tabs",
+      storage: createJSONStorage(() => sessionStorage),
+      partialize: (state) => ({
+        tabs: state.tabs,
+        activeTabId: state.activeTabId,
+      }),
+    },
+  ),
+);

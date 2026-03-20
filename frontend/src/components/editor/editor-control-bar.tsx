@@ -109,8 +109,12 @@ export function EditorControlBar({
           onSave();
           break;
         case "z":
-          if (!e.shiftKey) {
-            e.preventDefault();
+          e.preventDefault();
+          if (e.shiftKey) {
+            // Ctrl+Shift+Z → Redo
+            activeWorkspace.undo(true);
+          } else {
+            // Ctrl+Z → Undo
             activeWorkspace.undo(false);
           }
           break;
