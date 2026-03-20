@@ -43,6 +43,8 @@ import { useBotData, type BotItem } from "@/lib/hooks/use-bot-data";
 import { CreateBotDialog } from "@/components/trading/create-bot-dialog";
 import { StopBotDialog } from "@/components/trading/stop-bot-dialog";
 import { BotLogsConsole } from "@/components/trading/bot-logs-console";
+import { PositionDisplay } from "@/components/trading/position-display";
+import { usePositionUpdates } from "@/lib/hooks/use-position-updates";
 import { toast } from "sonner";
 
 // -----------------------------------------------------------------
@@ -96,6 +98,15 @@ function PnlDisplay({ pnl }: { pnl: number }) {
 }
 
 // -----------------------------------------------------------------
+// LivePnl type
+// -----------------------------------------------------------------
+
+interface LivePnlData {
+  totalPnl: number;
+  unrealizedPnl: number | null;
+}
+
+// -----------------------------------------------------------------
 // Bot Row — Tree Level 1
 // -----------------------------------------------------------------
 
@@ -107,6 +118,7 @@ function BotRow({
   onStart,
   onDelete,
   onViewLogs,
+  livePnl,
 }: {
   bot: BotItem;
   isExpanded: boolean;
@@ -115,6 +127,7 @@ function BotRow({
   onStart: () => void;
   onDelete: () => void;
   onViewLogs: () => void;
+  livePnl: LivePnlData | null;
 }) {
   const isRunning = bot.status === "Running";
   const isStopped = bot.status === "Stopped";
@@ -150,9 +163,9 @@ function BotRow({
           <StatusBadge status={bot.status} />
         </div>
 
-        {/* PnL */}
+        {/* PnL — live override if available */}
         <div className="flex-1 text-right">
-          <PnlDisplay pnl={bot.totalPnl} />
+          <PnlDisplay pnl={livePnl?.totalPnl ?? bot.totalPnl} />
         </div>
 
         {/* Actions */}
@@ -208,105 +221,9 @@ function BotRow({
         </div>
       </div>
 
-      {/* Row Level 2 — Expanded Detail */}
+      {/* Row Level 2 — Expanded Detail (Task 3.3.5: PositionDisplay) */}
       {isExpanded && (
-        <div className="pl-10 pr-3 pb-2 space-y-1.5">
-          {/* Position */}
-          {bot.position ? (
-            <div className="text-xs text-muted-foreground flex items-center gap-1">
-              <span className="text-muted-foreground/60">├─</span>
-              <span>
-                Vị thế:{" "}
-                <span
-                  className={
-                    bot.position.side === "Long"
-                      ? "text-success font-medium"
-                      : "text-danger font-medium"
-                  }
-                >
-                  {bot.position.side}
-                </span>
-              </span>
-              <span className="text-muted-foreground/40">│</span>
-              <span>
-                Entry:{" "}
-                <span className="font-mono">
-                  {bot.position.entryPrice.toLocaleString()}
-                </span>
-              </span>
-              <span className="text-muted-foreground/40">│</span>
-              <span>
-                Size:{" "}
-                <span className="font-mono">{bot.position.quantity}</span>
-              </span>
-              <span className="text-muted-foreground/40">│</span>
-              <span>
-                PnL:{" "}
-                <span
-                  className={`font-mono ${
-                    bot.position.unrealizedPnl >= 0
-                      ? "text-success"
-                      : "text-danger"
-                  }`}
-                >
-                  {bot.position.unrealizedPnl >= 0 ? "+" : ""}
-                  {bot.position.unrealizedPnl.toFixed(2)}
-                </span>
-              </span>
-            </div>
-          ) : (
-            <div className="text-xs text-muted-foreground/60 flex items-center gap-1">
-              <span className="text-muted-foreground/60">├─</span>
-              <span>Không có vị thế mở</span>
-            </div>
-          )}
-
-          {/* Open Orders */}
-          {bot.openOrders && bot.openOrders.length > 0 ? (
-            bot.openOrders.map((order, idx) => (
-              <div
-                key={order.orderId}
-                className="text-xs text-muted-foreground flex items-center gap-1"
-              >
-                <span className="text-muted-foreground/60">
-                  {idx === bot.openOrders!.length - 1 ? "└─" : "├─"}
-                </span>
-                <span>
-                  Lệnh chờ:{" "}
-                  <span className="font-medium">{order.type}</span>{" "}
-                  <span
-                    className={
-                      order.side === "Buy" ? "text-success" : "text-danger"
-                    }
-                  >
-                    {order.side}
-                  </span>{" "}
-                  @{" "}
-                  <span className="font-mono">
-                    {order.price.toLocaleString()}
-                  </span>{" "}
-                  (Qty: <span className="font-mono">{order.quantity}</span>)
-                </span>
-              </div>
-            ))
-          ) : (
-            !bot.position && (
-              <div className="text-xs text-muted-foreground/60 flex items-center gap-1">
-                <span className="text-muted-foreground/60">└─</span>
-                <span>Không có lệnh chờ</span>
-              </div>
-            )
-          )}
-
-          {/* Closing tree for position without orders */}
-          {bot.position &&
-            (!bot.openOrders || bot.openOrders.length === 0) && (
-              <div className="text-xs text-muted-foreground/60 flex items-center gap-1">
-                <span className="text-muted-foreground/60">└─</span>
-                <span>Không có lệnh chờ</span>
-              </div>
-            )}
-        </div>
+        <PositionDisplay bot={bot} livePnl={livePnl} />
       )}
     </div>
   );
@@ -327,6 +244,9 @@ export function BotPanel() {
     stopBot,
     deleteBot,
   } = useBotData();
+
+  // Task 3.3.5: Real-time PnL simulation
+  const { getLivePnl } = usePositionUpdates(bots);
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [stopTarget, setStopTarget] = useState<{
@@ -440,6 +360,7 @@ export function BotPanel() {
               onStart={() => handleStart(bot)}
               onDelete={() => handleDelete(bot)}
               onViewLogs={() => setLogsTarget({ id: bot.id, name: bot.name })}
+              livePnl={getLivePnl(bot.id)}
             />
           ))
         )}
