@@ -154,3 +154,22 @@ html {
 .animate-shake {
   animation: shake 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
+
+/* [3.3.1] Price flash animations for Market Watch — 300ms (frontend_flows §3.2.2) */
+@keyframes price-flash-up {
+  0%   { background-color: rgba(38, 166, 154, 0.25); }  /* --success / --long */
+  100% { background-color: transparent; }
+}
+
+@keyframes price-flash-down {
+  0%   { background-color: rgba(239, 83, 80, 0.25); }   /* --danger / --short */
+  100% { background-color: transparent; }
+}
+
+.animate-price-flash-up {
+  animation: price-flash-up 0.3s ease-out forwards;
+}
+
+.animate-price-flash-down {
+  animation: price-flash-down 0.3s ease-out forwards;
+}

@@ -276,3 +276,32 @@ export const strategyApi = {
     URL.revokeObjectURL(url);
   },
 };
+
+// -----------------------------------------------------------------
+// Market API functions (Task 3.3.1)
+// -----------------------------------------------------------------
+
+/** Individual symbol info returned by GET /market/symbols */
+interface MarketSymbolResponse {
+  symbol: string;
+  base_asset: string;
+  quote_asset: string;
+  last_price: number;
+  price_change_percent: number;
+  volume_24h: number;
+  has_running_bot: boolean;
+}
+
+export const marketApi = {
+  /**
+   * GET /market/symbols — List watched symbols with latest price info.
+   * Backend returns symbols configured via WATCHED_SYMBOLS env var.
+   * Used by MarketWatch component (Task 3.3.1).
+   */
+  async getSymbols(): Promise<MarketSymbolResponse[]> {
+    const res = await apiFetch<{ data: MarketSymbolResponse[] }>(
+      "/market/symbols",
+    );
+    return res.data;
+  },
+};

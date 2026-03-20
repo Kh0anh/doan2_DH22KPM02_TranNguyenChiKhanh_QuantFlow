@@ -33,6 +33,20 @@ export interface SymbolInfo {
   hasRunningBot?: boolean;
 }
 
+/**
+ * Real-time ticker data received from market_ticker WS channel.
+ * Maps to websocket.md §3.1 — Event: market_ticker payload.
+ */
+export interface MarketTickerData {
+  symbol: string;
+  lastPrice: number;
+  priceChangePercent: number;
+  high24h: number;
+  low24h: number;
+  volume24h: number;
+  timestamp: string;
+}
+
 export type Timeframe = "1m" | "5m" | "15m" | "30m" | "1h" | "4h" | "1d";
 
 /** OHLCV candle — time in Unix seconds */
