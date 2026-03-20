@@ -5,7 +5,7 @@
 //
 // States (frontend_flows.md §3.2.5):
 //   1. Config Form — BacktestConfigForm (Task 3.4.1)
-//   2. Running — Progress bar + Cancel
+//   2. Running — Progress bar + Cancel (polls GET /backtests/{id})
 //   3. Results — Stats + Equity Curve (Task 3.4.2)
 //
 // SRS: UC-06
@@ -13,7 +13,7 @@
 
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BacktestConfigForm } from "@/components/trading/backtest-config-form";
@@ -21,7 +21,7 @@ import {
   BacktestResultDisplay,
   type BacktestResultData,
 } from "@/components/trading/backtest-result-display";
-import { backtestApi } from "@/lib/api-client";
+import { backtestApi, type BacktestResultResponse } from "@/lib/api-client";
 import { toast } from "sonner";
 
 // -----------------------------------------------------------------
@@ -31,33 +31,29 @@ import { toast } from "sonner";
 type BacktestState = "config" | "running" | "completed" | "failed";
 
 // -----------------------------------------------------------------
-// Mock result generator
+// Helpers
 // -----------------------------------------------------------------
 
-function generateMockResult(): BacktestResultData {
-  const totalPnl = Math.round((Math.random() * 800 - 200) * 100) / 100;
-  const winRate = Math.round((40 + Math.random() * 30) * 10) / 10;
-  const maxDrawdown = -Math.round((3 + Math.random() * 12) * 10) / 10;
-  const profitFactor = Math.round((0.8 + Math.random() * 1.5) * 100) / 100;
-  const totalTrades = Math.floor(50 + Math.random() * 200);
-
-  // Generate equity curve
-  const equityCurve: { time: string; equity: number }[] = [];
-  let equity = 1000;
-  const now = Date.now();
-  const dayMs = 86400000;
-
-  for (let i = 0; i < 60; i++) {
-    const change = (Math.random() - 0.45) * 20;
-    equity += change;
-    equityCurve.push({
-      time: new Date(now - (60 - i) * dayMs).toISOString(),
-      equity: Math.round(equity * 100) / 100,
-    });
-  }
-
-  return { totalPnl, winRate, maxDrawdown, profitFactor, totalTrades, equityCurve };
+/** Convert the backend BacktestResultResponse (completed) to the shape
+ *  expected by BacktestResultDisplay. Backend sends Decimal values as
+ *  strings (shopspring/decimal JSON serialisation). */
+function mapResultData(res: BacktestResultResponse): BacktestResultData {
+  const s = res.summary;
+  return {
+    totalPnl: s ? parseFloat(s.total_pnl) : 0,
+    winRate: s ? parseFloat(s.win_rate) : 0,
+    maxDrawdown: s ? parseFloat(s.max_drawdown_percent) : 0,
+    profitFactor: s ? parseFloat(s.profit_factor) : 0,
+    totalTrades: s?.total_trades ?? 0,
+    equityCurve: (res.equity_curve ?? []).map((pt) => ({
+      time: pt.timestamp,
+      equity: parseFloat(pt.equity),
+    })),
+  };
 }
+
+// Polling interval in milliseconds
+const POLL_INTERVAL_MS = 2000;
 
 // -----------------------------------------------------------------
 // Component
@@ -68,30 +64,67 @@ export function BacktestPanel() {
   const [backtestId, setBacktestId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<BacktestResultData | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ------- Start backtest -------
-  const handleSubmit = useCallback((id: string) => {
-    setBacktestId(id);
-    setState("running");
-    setProgress(0);
-    setResult(null);
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
 
-    // Mock progress simulation
-    let p = 0;
-    intervalRef.current = setInterval(() => {
-      p += Math.random() * 15 + 5;
-      if (p >= 100) {
-        p = 100;
+  // ------- Poll backtest status -------
+  const startPolling = useCallback((id: string) => {
+    // Clear any existing interval
+    if (intervalRef.current) clearInterval(intervalRef.current);
+
+    intervalRef.current = setInterval(async () => {
+      try {
+        const res = await backtestApi.getResult(id);
+
+        if (res.status === "processing") {
+          setProgress(res.progress ?? 0);
+          return; // keep polling
+        }
+
+        // Terminal state — stop polling
         if (intervalRef.current) clearInterval(intervalRef.current);
 
-        // Generate mock result
-        setResult(generateMockResult());
-        setState("completed");
+        if (res.status === "completed") {
+          setProgress(100);
+          setResult(mapResultData(res));
+          setState("completed");
+        } else {
+          // canceled
+          toast.info("Phiên Backtest đã bị hủy.");
+          setState("config");
+          setBacktestId(null);
+          setProgress(0);
+        }
+      } catch (err) {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        const msg =
+          err instanceof Error ? err.message : "Lỗi không xác định.";
+        setErrorMsg(msg);
+        toast.error(`Backtest lỗi: ${msg}`);
+        setState("failed");
       }
-      setProgress(Math.min(Math.round(p), 100));
-    }, 800);
+    }, POLL_INTERVAL_MS);
   }, []);
+
+  // ------- Start backtest (called by config form with backtest_id) -------
+  const handleSubmit = useCallback(
+    (id: string) => {
+      setBacktestId(id);
+      setState("running");
+      setProgress(0);
+      setResult(null);
+      setErrorMsg(null);
+      startPolling(id);
+    },
+    [startPolling],
+  );
 
   // ------- Cancel -------
   const handleCancel = useCallback(async () => {
@@ -99,37 +132,26 @@ export function BacktestPanel() {
     if (backtestId) {
       try {
         await backtestApi.cancel(backtestId);
+        toast.info("Đã hủy phiên Backtest.");
       } catch {
-        // Mock: just reset
+        toast.error("Không thể hủy phiên Backtest.");
       }
     }
-    toast.info("Đã hủy phiên Backtest.");
     setState("config");
     setBacktestId(null);
     setProgress(0);
     setResult(null);
   }, [backtestId]);
 
-  // ------- Rerun (keep config) -------
+  // ------- Rerun (reset to config form) -------
   const handleRerun = useCallback(() => {
-    if (backtestId) {
-      setState("running");
-      setProgress(0);
-      setResult(null);
-
-      let p = 0;
-      intervalRef.current = setInterval(() => {
-        p += Math.random() * 15 + 5;
-        if (p >= 100) {
-          p = 100;
-          if (intervalRef.current) clearInterval(intervalRef.current);
-          setResult(generateMockResult());
-          setState("completed");
-        }
-        setProgress(Math.min(Math.round(p), 100));
-      }, 800);
-    }
-  }, [backtestId]);
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    setState("config");
+    setProgress(0);
+    setResult(null);
+    setErrorMsg(null);
+    // Keep backtestId so config form retains context
+  }, []);
 
   // ------- Reset to config -------
   const handleReset = useCallback(() => {
@@ -138,6 +160,7 @@ export function BacktestPanel() {
     setBacktestId(null);
     setProgress(0);
     setResult(null);
+    setErrorMsg(null);
   }, []);
 
   // ------- State 1: Config Form -------
@@ -192,10 +215,15 @@ export function BacktestPanel() {
     );
   }
 
-  // ------- Fallback -------
+  // ------- State 4: Failed -------
   return (
-    <div className="flex items-center justify-center h-full">
-      <p className="text-sm text-muted-foreground">Lỗi không xác định.</p>
+    <div className="flex flex-col items-center justify-center h-full gap-3">
+      <p className="text-sm text-danger">
+        {errorMsg ?? "Lỗi không xác định."}
+      </p>
+      <Button variant="outline" size="sm" onClick={handleReset}>
+        Quay về cấu hình
+      </Button>
     </div>
   );
 }

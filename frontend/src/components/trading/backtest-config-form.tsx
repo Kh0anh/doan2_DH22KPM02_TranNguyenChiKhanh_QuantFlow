@@ -51,12 +51,6 @@ sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 const DEFAULT_START = sixMonthsAgo.toISOString().slice(0, 10);
 const DEFAULT_END = now.toISOString().slice(0, 10);
 
-// Mock strategies fallback
-const MOCK_STRATEGIES = [
-  { id: "strat-001", name: "EMA Crossover 15m" },
-  { id: "strat-002", name: "RSI Reversal" },
-  { id: "strat-003", name: "Bollinger Breakout" },
-];
 
 // -----------------------------------------------------------------
 // Types
@@ -90,9 +84,9 @@ export function BacktestConfigForm({
             name: s.name,
           }),
         );
-        setStrategies(mapped.length > 0 ? mapped : MOCK_STRATEGIES);
+        setStrategies(mapped);
       } catch {
-        setStrategies(MOCK_STRATEGIES);
+        setStrategies([]);
       }
     }
     fetchStrategies();
@@ -152,10 +146,10 @@ export function BacktestConfigForm({
       const result = await backtestApi.create(params);
       toast.success("Phiên Backtest đã được khởi tạo!");
       onSubmit(result.backtest_id);
-    } catch {
-      // Mock: simulate success
-      toast.success("Phiên Backtest đã được khởi tạo! (mock)");
-      onSubmit(`mock-bt-${Date.now()}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Lỗi không xác định.";
+      toast.error(`Khởi tạo Backtest thất bại: ${msg}`);
+      setError(msg);
     } finally {
       setIsSubmitting(false);
     }

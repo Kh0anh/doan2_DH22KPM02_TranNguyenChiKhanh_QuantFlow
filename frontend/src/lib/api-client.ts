@@ -586,50 +586,73 @@ export interface CreateBacktestParams {
   max_unit?: number;
 }
 
-/** Response from POST /backtests */
+/** Response from POST /backtests — flat JSON (no data wrapper) */
 export interface BacktestCreatedResponse {
   backtest_id: string;
   status: "processing";
   created_at: string;
 }
 
-/** Response from GET /backtests/{id} */
+/**
+ * Response from GET /backtests/{id} — shape varies by status:
+ *   processing → { backtest_id, status, progress }
+ *   completed  → { backtest_id, status, config, summary, equity_curve, trades, created_at, completed_at }
+ *   canceled   → { backtest_id, status, created_at, completed_at }
+ */
 export interface BacktestResultResponse {
   backtest_id: string;
-  status: "processing" | "completed" | "failed" | "cancelled";
+  status: "processing" | "completed" | "canceled";
   progress?: number;
-  result?: {
-    total_pnl: number;
-    win_rate: number;
-    max_drawdown: number;
-    profit_factor: number;
-    total_trades: number;
-    equity_curve: { time: string; equity: number }[];
+  config?: {
+    strategy_id: string;
+    strategy_name: string;
+    symbol: string;
+    timeframe: string;
+    start_time: string;
+    end_time: string;
+    initial_capital: string;
+    fee_rate: string;
   };
-  error_message?: string;
+  summary?: {
+    total_pnl: string;
+    total_pnl_percent: string;
+    win_rate: string;
+    total_trades: number;
+    winning_trades: number;
+    losing_trades: number;
+    max_drawdown: string;
+    max_drawdown_percent: string;
+    profit_factor: string;
+  };
+  equity_curve?: { timestamp: string; equity: string }[];
+  trades?: {
+    open_time: string;
+    close_time: string;
+    side: string;
+    entry_price: string;
+    exit_price: string;
+    quantity: string;
+    fee: string;
+    pnl: string;
+  }[];
+  created_at?: string;
+  completed_at?: string;
 }
 
 export const backtestApi = {
-  /** POST /backtests — Create a new backtest */
+  /** POST /backtests — Create a new backtest (flat JSON response) */
   async create(
     params: CreateBacktestParams,
   ): Promise<BacktestCreatedResponse> {
-    const res = await apiFetch<{ data: BacktestCreatedResponse }>(
-      "/backtests",
-      {
-        method: "POST",
-        body: JSON.stringify(params),
-      },
-    );
-    return res.data;
+    return apiFetch<BacktestCreatedResponse>("/backtests", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
   },
 
-  /** GET /backtests/{id} — Get backtest result */
+  /** GET /backtests/{id} — Get backtest result (flat JSON response) */
   async getResult(id: string): Promise<BacktestResultResponse> {
-    const res = await apiFetch<{ data: BacktestResultResponse }>(
-      `/backtests/${id}`,
-    );
-    return res.data;
+    return apiFetch<BacktestResultResponse>(`/backtests/${id}`);
   },
 
   /** POST /backtests/{id}/cancel — Cancel running backtest */
