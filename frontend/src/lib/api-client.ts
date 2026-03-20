@@ -571,3 +571,71 @@ export const tradeApi = {
   },
 };
 
+// -----------------------------------------------------------------
+// Backtest API (Task 3.4.1)
+// -----------------------------------------------------------------
+
+/** Params for POST /backtests */
+export interface CreateBacktestParams {
+  strategy_id: string;
+  symbol: string;
+  timeframe: string;
+  start_time: string;
+  end_time: string;
+  initial_capital: number;
+  fee_rate: number;
+  max_unit?: number;
+}
+
+/** Response from POST /backtests */
+export interface BacktestCreatedResponse {
+  backtest_id: string;
+  status: "processing";
+  created_at: string;
+}
+
+/** Response from GET /backtests/{id} */
+export interface BacktestResultResponse {
+  backtest_id: string;
+  status: "processing" | "completed" | "failed" | "cancelled";
+  progress?: number;
+  result?: {
+    total_pnl: number;
+    win_rate: number;
+    max_drawdown: number;
+    profit_factor: number;
+    total_trades: number;
+    equity_curve: { time: string; equity: number }[];
+  };
+  error_message?: string;
+}
+
+export const backtestApi = {
+  /** POST /backtests — Create a new backtest */
+  async create(
+    params: CreateBacktestParams,
+  ): Promise<BacktestCreatedResponse> {
+    const res = await apiFetch<{ data: BacktestCreatedResponse }>(
+      "/backtests",
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      },
+    );
+    return res.data;
+  },
+
+  /** GET /backtests/{id} — Get backtest result */
+  async getResult(id: string): Promise<BacktestResultResponse> {
+    const res = await apiFetch<{ data: BacktestResultResponse }>(
+      `/backtests/${id}`,
+    );
+    return res.data;
+  },
+
+  /** POST /backtests/{id}/cancel — Cancel running backtest */
+  async cancel(id: string): Promise<void> {
+    await apiFetch(`/backtests/${id}/cancel`, { method: "POST" });
+  },
+};
+
