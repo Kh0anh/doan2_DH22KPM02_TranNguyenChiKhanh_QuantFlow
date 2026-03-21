@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useUIStore } from "@/store/ui-store";
+import { ConnectionIndicator } from "@/components/shared/connection-indicator";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -75,7 +76,9 @@ export function TopBar() {
         </span>
       </div>
 
-      {/* ── Right side: User dropdown ── */}
+      {/* ── Right side: Connection indicator + User dropdown ── */}
+      <div className="flex items-center gap-3">
+        <ConnectionIndicator />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
@@ -123,6 +126,7 @@ export function TopBar() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      </div>
     </header>
   );
 }
