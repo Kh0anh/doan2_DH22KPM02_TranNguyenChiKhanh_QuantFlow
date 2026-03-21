@@ -63,7 +63,7 @@ function usePnlFlash(value: number | null | undefined): "flash-up" | "flash-down
 // -----------------------------------------------------------------
 
 export function PositionDisplay({ bot, livePnl }: PositionDisplayProps) {
-  const totalPnl = livePnl?.totalPnl ?? bot.totalPnl;
+  const totalPnl = Number(livePnl?.totalPnl ?? bot.totalPnl) || 0;
   const unrealizedPnl =
     livePnl?.unrealizedPnl ?? bot.position?.unrealizedPnl ?? null;
 
