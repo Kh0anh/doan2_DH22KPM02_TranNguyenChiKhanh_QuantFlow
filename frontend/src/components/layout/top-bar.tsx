@@ -25,6 +25,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useUIStore } from "@/store/ui-store";
 import { ConnectionIndicator } from "@/components/shared/connection-indicator";
+import { useSystemAlerts } from "@/lib/hooks/use-system-alerts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -45,6 +46,9 @@ export function TopBar() {
   const { user, logout } = useAuth();
   const openSettings = useUIStore((s) => s.openSettings);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  // Mount global system alerts (Task 3.4.6)
+  useSystemAlerts();
 
   const username = user?.username ?? "";
 
