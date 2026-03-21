@@ -528,7 +528,15 @@ func (l *BotLogic) StopBot(ctx context.Context, botID, userID string, closePosit
 	// BotManager.StopBot sends a cancellation signal and waits up to 30s for
 	// the goroutine to acknowledge via doneCh (Task 2.7.1 fault isolation).
 	if err := l.botManager.StopBot(ctx, botID, 30*time.Second); err != nil {
-		return nil, fmt.Errorf("bot_logic: StopBot: manager stop: %w", err)
+		// If the bot is not in the in-memory registry (e.g., goroutine already
+		// exited after a server restart, or a previous context-cancel bug), the
+		// BotManager returns bot.ErrBotNotFound. This is a benign state — the
+		// goroutine is already gone, so we just update the DB status to Stopped.
+		if !errors.Is(err, bot.ErrBotNotFound) {
+			return nil, fmt.Errorf("bot_logic: StopBot: manager stop: %w", err)
+		}
+		// Goroutine not running — update DB status to Stopped.
+		_ = l.botRepo.UpdateStatus(ctx, botID, domain.BotStatusStopped)
 	}
 
 	// ─── Step 5: Fetch final state for response ───────────────────────────────
