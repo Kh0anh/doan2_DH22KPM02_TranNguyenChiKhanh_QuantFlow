@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kh0anh/quantflow/internal/domain"
 	"github.com/kh0anh/quantflow/internal/engine/backtest"
 	"github.com/kh0anh/quantflow/internal/engine/blockly"
 	"github.com/kh0anh/quantflow/internal/repository"
@@ -72,6 +73,11 @@ var (
 	// already reached a terminal state (completed or canceled).
 	// Handler maps this to HTTP 409 BACKTEST_ALREADY_DONE.
 	ErrBacktestAlreadyDone = errors.New("backtest: session is already completed or canceled")
+
+	// ErrBacktestStrategyInvalid is returned by CreateBacktest when the strategy
+	// status is not "Valid". Only validated strategies can be backtested.
+	// Handler maps this to HTTP 422 STRATEGY_INVALID.
+	ErrBacktestStrategyInvalid = errors.New("backtest: strategy status must be Valid")
 )
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -327,6 +333,12 @@ func (l *BacktestLogic) CreateBacktest(
 	}
 	if detail == nil {
 		return nil, ErrStrategyNotFound
+	}
+
+	// Reject strategies that are not in Valid status (e.g. Draft).
+	// Mirrors the same precondition enforced by bot_logic.CreateBot.
+	if detail.Status != domain.StrategyStatusValid {
+		return nil, ErrBacktestStrategyInvalid
 	}
 
 	// Copy logic_json bytes so the goroutine holds its own reference after the

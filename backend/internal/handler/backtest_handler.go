@@ -128,13 +128,17 @@ func (h *BacktestHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	job, err := h.backtestLogic.CreateBacktest(r.Context(), claims.UserID, input)
 	if err != nil {
-		if errors.Is(err, logic.ErrStrategyNotFound) {
+		switch {
+		case errors.Is(err, logic.ErrStrategyNotFound):
 			response.Error(w, http.StatusNotFound, "STRATEGY_NOT_FOUND",
 				"Strategy not found or does not belong to the current user.")
-			return
+		case errors.Is(err, logic.ErrBacktestStrategyInvalid):
+			response.Error(w, http.StatusUnprocessableEntity, "STRATEGY_INVALID",
+				"Strategy status is Draft. Please save the strategy with Valid status before backtesting.")
+		default:
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR",
+				"An internal error occurred. Please try again later.")
 		}
-		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR",
-			"An internal error occurred. Please try again later.")
 		return
 	}
 

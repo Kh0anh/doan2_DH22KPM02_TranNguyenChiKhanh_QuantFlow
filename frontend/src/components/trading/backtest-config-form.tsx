@@ -78,13 +78,16 @@ export function BacktestConfigForm({
     async function fetchStrategies() {
       try {
         const res = await strategyApi.list({ limit: 100 });
-        const mapped = res.data.map(
-          (s: { id: string; name: string }) => ({
-            id: s.id,
-            name: s.name,
-          }),
-        );
-        setStrategies(mapped);
+        // Only show Valid strategies — Draft strategies cannot be backtested
+        const validStrategies = res.data
+          .filter((s: { status: string }) => s.status === "Valid")
+          .map(
+            (s: { id: string; name: string }) => ({
+              id: s.id,
+              name: s.name,
+            }),
+          );
+        setStrategies(validStrategies);
       } catch {
         setStrategies([]);
       }

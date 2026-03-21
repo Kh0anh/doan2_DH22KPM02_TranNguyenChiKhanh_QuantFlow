@@ -101,12 +101,14 @@ export function CreateBotDialog({
       try {
         const res = await strategyApi.list({ page: 1, limit: 50 });
         if (res.data && res.data.length > 0) {
-          setStrategies(
-            res.data.map((s: { id: string; name: string }) => ({
+          // Only show Valid strategies — Draft strategies cannot be used by bots
+          const validStrategies = res.data
+            .filter((s: { status: string }) => s.status === "Valid")
+            .map((s: { id: string; name: string }) => ({
               id: s.id,
               name: s.name,
-            })),
-          );
+            }));
+          setStrategies(validStrategies);
         }
       } catch {
         // Use mock strategies
