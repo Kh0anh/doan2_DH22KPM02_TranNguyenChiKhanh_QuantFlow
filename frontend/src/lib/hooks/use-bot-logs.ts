@@ -36,22 +36,8 @@ export interface LogEntry {
 const MAX_LOG_LINES = 1000;
 
 // -----------------------------------------------------------------
-// Mock log generator
+// Time formatter
 // -----------------------------------------------------------------
-
-const MOCK_MESSAGES: { msg: string; level: LogEntry["level"]; action: string | null }[] = [
-  { msg: "Session #%d triggered", level: "info", action: null },
-  { msg: "RSI(15m,14) = %v", level: "info", action: null },
-  { msg: "EMA(9) = %v, EMA(21) = %v → Crossover detected", level: "info", action: null },
-  { msg: "→ LONG BTCUSDT Qty=0.01 → ORDER_PLACED", level: "order", action: "Đặt lệnh Long" },
-  { msg: "→ SHORT ETHUSDT Qty=0.5 → ORDER_PLACED", level: "order", action: "Đặt lệnh Short" },
-  { msg: "Unit used: %d/1000", level: "info", action: null },
-  { msg: "Điều kiện chưa thỏa → SKIP", level: "skip", action: "Bỏ qua" },
-  { msg: "Bollinger Band Width = 0.032, chưa đủ biến động → SKIP", level: "skip", action: "Bỏ qua" },
-  { msg: "Lỗi kết nối sàn: timeout after 5000ms", level: "error", action: null },
-  { msg: "Stop Loss triggered @ %v", level: "order", action: "Stop Loss" },
-  { msg: "Take Profit triggered @ %v", level: "order", action: "Take Profit" },
-];
 
 function formatTime(date: Date): string {
   const h = String(date.getHours()).padStart(2, "0");
@@ -60,32 +46,7 @@ function formatTime(date: Date): string {
   return `[${h}:${m}:${s}]`;
 }
 
-function generateMockLogs(count: number): LogEntry[] {
-  const logs: LogEntry[] = [];
-  const now = Date.now();
-  let sessionNum = 130;
 
-  for (let i = 0; i < count; i++) {
-    const template = MOCK_MESSAGES[i % MOCK_MESSAGES.length];
-    const time = new Date(now - (count - i) * 3000);
-    let msg = template.msg;
-
-    // Replace placeholders
-    msg = msg.replace("%d", String(sessionNum + Math.floor(i / 4)));
-    msg = msg.replace("%v", String(Math.round((30 + Math.random() * 40) * 100) / 100));
-    msg = msg.replaceAll("%v", String(Math.round((60000 + Math.random() * 8000) * 100) / 100));
-
-    logs.push({
-      id: 10000 + i,
-      timestamp: time.toISOString(),
-      formattedTime: formatTime(time),
-      level: template.level,
-      message: msg,
-    });
-  }
-
-  return logs;
-}
 
 // -----------------------------------------------------------------
 // Hook
@@ -130,10 +91,9 @@ export function useBotLogs(botId: string) {
         setHasMore(res.pagination.has_more);
         cursorRef.current = res.pagination.next_cursor;
       } catch {
-        // Mock fallback
+        // API unavailable — show empty state
         if (cancelled) return;
-        const mockLogs = generateMockLogs(40);
-        setLogs(mockLogs);
+        setLogs([]);
         setHasMore(false);
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -187,40 +147,7 @@ export function useBotLogs(botId: string) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionState, botId]);
 
-  // ------- Mock real-time log append (fallback when WS disconnected) -------
-  useEffect(() => {
-    if (connectionState === "connected") return;
-    if (isLoading) return;
 
-    let idCounter = 20000;
-    const interval = setInterval(() => {
-      const template = MOCK_MESSAGES[Math.floor(Math.random() * MOCK_MESSAGES.length)];
-      const now = new Date();
-      let msg = template.msg;
-      msg = msg.replace("%d", String(140 + Math.floor(Math.random() * 20)));
-      msg = msg.replace("%v", String(Math.round((30 + Math.random() * 40) * 100) / 100));
-      msg = msg.replaceAll("%v", String(Math.round((60000 + Math.random() * 8000) * 100) / 100));
-
-      const newEntry: LogEntry = {
-        id: idCounter++,
-        timestamp: now.toISOString(),
-        formattedTime: formatTime(now),
-        level: template.level,
-        message: msg,
-      };
-
-      setLogs((prev) => {
-        const next = [...prev, newEntry];
-        // Cap at MAX_LOG_LINES
-        if (next.length > MAX_LOG_LINES) {
-          return next.slice(next.length - MAX_LOG_LINES);
-        }
-        return next;
-      });
-    }, 3000 + Math.random() * 2000);
-
-    return () => clearInterval(interval);
-  }, [connectionState, isLoading]);
 
   // ------- Load more (older logs) -------
   const loadMore = useCallback(async () => {

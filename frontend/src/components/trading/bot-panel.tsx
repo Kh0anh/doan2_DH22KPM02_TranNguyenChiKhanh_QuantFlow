@@ -266,32 +266,45 @@ export function BotPanel() {
       strategyId: string;
       symbol: string;
     }) => {
-      const result = await createBot(params);
-      if (result.success) {
-        toast.success(`Bot "${params.botName}" đã khởi chạy thành công`);
+      try {
+        const result = await createBot(params);
+        if (result.success) {
+          toast.success(`Bot "${params.botName}" đã khởi chạy thành công`);
+        }
+        return result;
+      } catch {
+        toast.error("Không thể tạo Bot. Vui lòng thử lại.");
+        throw new Error("Create bot failed");
       }
-      return result;
     },
     [createBot],
   );
 
   const handleStart = useCallback(
     async (bot: BotItem) => {
-      await startBot(bot.id);
-      toast.success(`Bot "${bot.name}" đã khởi động lại`);
+      try {
+        await startBot(bot.id);
+        toast.success(`Bot "${bot.name}" đã khởi động lại`);
+      } catch {
+        toast.error(`Không thể khởi động Bot "${bot.name}". Vui lòng thử lại.`);
+      }
     },
     [startBot],
   );
 
   const handleStopConfirm = useCallback(
     async (botId: string, closePosition: boolean) => {
-      await stopBot(botId, closePosition);
-      const bot = bots.find((b) => b.id === botId);
-      toast.success(
-        `Bot "${bot?.name ?? botId}" đã dừng${
-          closePosition ? " và đóng vị thế" : ""
-        }`,
-      );
+      try {
+        await stopBot(botId, closePosition);
+        const bot = bots.find((b) => b.id === botId);
+        toast.success(
+          `Bot "${bot?.name ?? botId}" đã dừng${
+            closePosition ? " và đóng vị thế" : ""
+          }`,
+        );
+      } catch {
+        toast.error("Không thể dừng Bot. Vui lòng thử lại.");
+      }
     },
     [stopBot, bots],
   );
@@ -302,8 +315,12 @@ export function BotPanel() {
         toast.error("Không thể xóa Bot đang chạy. Vui lòng dừng Bot trước.");
         return;
       }
-      await deleteBot(bot.id);
-      toast.success(`Bot "${bot.name}" đã được xóa`);
+      try {
+        await deleteBot(bot.id);
+        toast.success(`Bot "${bot.name}" đã được xóa`);
+      } catch {
+        toast.error(`Không thể xóa Bot "${bot.name}". Vui lòng thử lại.`);
+      }
     },
     [deleteBot],
   );

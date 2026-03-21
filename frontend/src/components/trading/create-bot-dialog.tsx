@@ -54,15 +54,7 @@ interface CreateBotDialogProps {
   }) => Promise<{ success: boolean }>;
 }
 
-// -----------------------------------------------------------------
-// Mock strategies for fallback
-// -----------------------------------------------------------------
 
-const MOCK_STRATEGIES: StrategyOption[] = [
-  { id: "strat-001", name: "EMA Crossover Strategy" },
-  { id: "strat-002", name: "RSI Reversal" },
-  { id: "strat-003", name: "Bollinger Grid" },
-];
 
 const SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"];
 
@@ -80,7 +72,7 @@ export function CreateBotDialog({
   const [strategyId, setStrategyId] = useState("");
   const [symbol, setSymbol] = useState(activeSymbol);
   const [strategies, setStrategies] =
-    useState<StrategyOption[]>(MOCK_STRATEGIES);
+    useState<StrategyOption[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -109,9 +101,11 @@ export function CreateBotDialog({
               name: s.name,
             }));
           setStrategies(validStrategies);
+        } else {
+          setStrategies([]);
         }
       } catch {
-        // Use mock strategies
+        setStrategies([]);
       }
     })();
   }, [open]);
