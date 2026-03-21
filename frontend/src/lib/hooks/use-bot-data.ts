@@ -100,18 +100,57 @@ export function useBotData() {
     fetchBots();
   }, [fetchBots]);
 
-  // ------- Toggle expand -------
-  const toggleExpand = useCallback((botId: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(botId)) {
-        next.delete(botId);
-      } else {
-        next.add(botId);
+  // ------- Toggle expand (fetches detail on expand) -------
+  const toggleExpand = useCallback(
+    async (botId: string) => {
+      setExpandedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(botId)) {
+          next.delete(botId);
+        } else {
+          next.add(botId);
+        }
+        return next;
+      });
+
+      // If expanding, fetch full bot detail (position + open orders)
+      if (!expandedIds.has(botId)) {
+        try {
+          const detail = await botApi.getDetail(botId);
+          setBots((prev) =>
+            prev.map((b) => {
+              if (b.id !== botId) return b;
+              return {
+                ...b,
+                totalPnl: Number(detail.total_pnl) || b.totalPnl,
+                position: detail.position
+                  ? {
+                      side: detail.position.side,
+                      entryPrice: detail.position.entry_price,
+                      quantity: detail.position.quantity,
+                      leverage: detail.position.leverage,
+                      unrealizedPnl: detail.position.unrealized_pnl,
+                      marginType: detail.position.margin_type,
+                    }
+                  : null,
+                openOrders: (detail.open_orders ?? []).map((o) => ({
+                  orderId: o.order_id,
+                  side: o.side,
+                  type: o.type,
+                  price: o.price,
+                  quantity: o.quantity,
+                  status: o.status,
+                })),
+              };
+            }),
+          );
+        } catch {
+          // Detail fetch failed — expanded view will show empty data
+        }
       }
-      return next;
-    });
-  }, []);
+    },
+    [expandedIds],
+  );
 
   // ------- Create bot -------
   const createBot = useCallback(
