@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -12,6 +13,11 @@ import (
 	appMiddleware "github.com/kh0anh/quantflow/internal/middleware"
 	"github.com/kh0anh/quantflow/pkg/response"
 )
+
+// uuidRegex matches a standard UUID v4 string (8-4-4-4-12 hex).
+// Used to validate path parameters before they reach PostgreSQL,
+// preventing "invalid input syntax for type uuid" SQL errors.
+var uuidRegex = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // BotHandler groups all /bots HTTP handlers (WBS 2.7.5).
 type BotHandler struct {
@@ -158,8 +164,8 @@ func (h *BotHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	botID := chi.URLParam(r, "id")
-	if botID == "" {
-		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "Bot ID is required.")
+	if botID == "" || !uuidRegex.MatchString(botID) {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "Bot ID must be a valid UUID.")
 		return
 	}
 
@@ -200,8 +206,8 @@ func (h *BotHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	botID := chi.URLParam(r, "id")
-	if botID == "" {
-		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "Bot ID is required.")
+	if botID == "" || !uuidRegex.MatchString(botID) {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "Bot ID must be a valid UUID.")
 		return
 	}
 
@@ -247,8 +253,8 @@ func (h *BotHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	botID := chi.URLParam(r, "id")
-	if botID == "" {
-		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "Bot ID is required.")
+	if botID == "" || !uuidRegex.MatchString(botID) {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "Bot ID must be a valid UUID.")
 		return
 	}
 
@@ -309,8 +315,8 @@ func (h *BotHandler) Stop(w http.ResponseWriter, r *http.Request) {
 	}
 
 	botID := chi.URLParam(r, "id")
-	if botID == "" {
-		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "Bot ID is required.")
+	if botID == "" || !uuidRegex.MatchString(botID) {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "Bot ID must be a valid UUID.")
 		return
 	}
 
@@ -373,8 +379,8 @@ func (h *BotHandler) Logs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	botID := chi.URLParam(r, "id")
-	if botID == "" {
-		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "Bot ID is required.")
+	if botID == "" || !uuidRegex.MatchString(botID) {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "Bot ID must be a valid UUID.")
 		return
 	}
 
