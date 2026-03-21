@@ -310,7 +310,7 @@ func (l *BotLogic) DeleteBot(ctx context.Context, botID, userID string) error {
 //	      {
 //	        "type": "event_on_candle",
 //	        "fields": {
-//	          "INTERVAL": "1m"  ← we want this string
+//	          "TIMEFRAME": "1m"  ← we want this string
 //	        }
 //	      }
 //	    ]
@@ -320,14 +320,14 @@ func (l *BotLogic) DeleteBot(ctx context.Context, botID, userID string) error {
 // Returns the Interval string (e.g., "1m", "5m", "1h") or an error if:
 //   - JSON is malformed.
 //   - No event_on_candle block is found.
-//   - The INTERVAL field is missing or empty.
+//   - The TIMEFRAME field is missing or empty.
 func extractIntervalFromLogicJSON(logicJSON []byte) (string, error) {
 	var root struct {
 		Blocks struct {
 			Blocks []struct {
 				Type   string `json:"type"`
 				Fields struct {
-					Interval string `json:"INTERVAL"`
+					Timeframe string `json:"TIMEFRAME"`
 				} `json:"fields"`
 			} `json:"blocks"`
 		} `json:"blocks"`
@@ -339,9 +339,9 @@ func extractIntervalFromLogicJSON(logicJSON []byte) (string, error) {
 
 	for _, block := range root.Blocks.Blocks {
 		if block.Type == "event_on_candle" {
-			interval := block.Fields.Interval
+			interval := block.Fields.Timeframe
 			if interval == "" {
-				return "", fmt.Errorf("extractInterval: event_on_candle INTERVAL field is empty")
+				return "", fmt.Errorf("extractInterval: event_on_candle TIMEFRAME field is empty")
 			}
 			return interval, nil
 		}
