@@ -152,6 +152,13 @@ func (r *stubCandleRepo) FindLatest(_ context.Context, _, _ string) (*domain.Can
 	c := r.candles[len(r.candles)-1]
 	return &c, nil
 }
+func (r *stubCandleRepo) FindOldest(_ context.Context, _, _ string) (*domain.Candle, error) {
+	if len(r.candles) == 0 {
+		return nil, nil
+	}
+	c := r.candles[0]
+	return &c, nil
+}
 func (r *stubCandleRepo) InsertOne(_ context.Context, _ *domain.Candle) error    { return nil }
 func (r *stubCandleRepo) InsertBatch(_ context.Context, _ []domain.Candle) error { return nil }
 func (r *stubCandleRepo) QueryCandles(_ context.Context, _, _ string, _, _ *time.Time, _ int) ([]domain.Candle, error) {

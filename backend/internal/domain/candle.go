@@ -13,6 +13,18 @@ const (
 	CandleInterval1d  = "1d"
 )
 
+// AllCandleIntervals lists every supported kline interval in ascending
+// duration order. Used by GapFillerWorker (WBS 2.4.2) and MarketTickerChannel
+// (WBS 2.8.2) to iterate over all timeframes without hard-coding.
+var AllCandleIntervals = []string{
+	CandleInterval1m,
+	CandleInterval5m,
+	CandleInterval15m,
+	CandleInterval1h,
+	CandleInterval4h,
+	CandleInterval1d,
+}
+
 // Candle maps to the `candles_data` table (Database Schema §9).
 //
 // Primary key is a BIGSERIAL auto-increment — chosen for high-write INSERT

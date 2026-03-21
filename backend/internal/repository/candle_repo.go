@@ -23,6 +23,14 @@ type CandleRepository interface {
 	//   - ErrRecordNotFound → caller must trigger REST fallback.
 	FindLatest(ctx context.Context, symbol, interval string) (*domain.Candle, error)
 
+	// FindOldest returns the earliest open_time candle for the given
+	// (symbol, interval) pair, or (nil, nil) when no record exists.
+	//
+	// Used by GapFillerWorker (WBS 2.4.2) to determine whether historical
+	// backfill is needed by comparing the oldest candle against the 30-day
+	// lookback threshold.
+	FindOldest(ctx context.Context, symbol, interval string) (*domain.Candle, error)
+
 	// InsertOne persists a single candle with ON CONFLICT DO NOTHING semantics.
 	//
 	// The UNIQUE constraint on (symbol, interval, open_time) guarantees
@@ -98,6 +106,30 @@ func (r *candleRepository) FindLatest(ctx context.Context, symbol, interval stri
 			return nil, nil
 		}
 		return nil, fmt.Errorf("candle_repo: FindLatest(%s, %s): %w", symbol, interval, err)
+	}
+
+	return &candle, nil
+}
+
+// FindOldest executes a query identical to FindLatest but ordered by open_time ASC,
+// returning the earliest candle for the given (symbol, interval) pair.
+//
+// Returns:
+//   - (*Candle, nil)  — record found.
+//   - (nil, nil)      — no matching record.
+//   - (nil, error)    — unexpected database error.
+func (r *candleRepository) FindOldest(ctx context.Context, symbol, interval string) (*domain.Candle, error) {
+	var candle domain.Candle
+	err := r.db.WithContext(ctx).
+		Where("symbol = ? AND interval = ?", symbol, interval).
+		Order("open_time ASC").
+		First(&candle).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("candle_repo: FindOldest(%s, %s): %w", symbol, interval, err)
 	}
 
 	return &candle, nil
