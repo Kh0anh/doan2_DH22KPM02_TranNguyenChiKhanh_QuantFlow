@@ -79,8 +79,8 @@ type StrategyDetail struct {
 	VersionID    string          `json:"-"` // UUID, not exposed in API response
 	Status       string          `json:"status"`
 	LogicJSON    json.RawMessage `json:"logic_json"`
-	Warning      *string         `json:"warning,omitempty"`
-	ActiveBotIDs []string        `json:"active_bot_ids,omitempty"`
+	Warning      *string         `gorm:"-" json:"warning,omitempty"`
+	ActiveBotIDs []string        `gorm:"-" json:"active_bot_ids,omitempty"`
 	CreatedAt    time.Time       `json:"created_at"`
 	UpdatedAt    time.Time       `json:"updated_at"`
 }
