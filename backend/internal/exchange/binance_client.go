@@ -381,6 +381,23 @@ func (p *BinanceProxy) GetOpenOrdersCount(ctx context.Context, symbol string) (i
 	return len(orders), nil
 }
 
+// getSymbolPrecision fetches the quantityPrecision and pricePrecision for the
+// given symbol from the Binance ExchangeInfo endpoint. These values indicate
+// the maximum number of decimal places allowed for each field.
+func (p *BinanceProxy) getSymbolPrecision(ctx context.Context, symbol string) (qtyPrecision, pricePrecision int32, err error) {
+	info, infoErr := p.client.NewExchangeInfoService().Do(ctx)
+	if infoErr != nil {
+		return 0, 0, fmt.Errorf("exchange: getSymbolPrecision(%s): %w", symbol, infoErr)
+	}
+	for _, s := range info.Symbols {
+		if s.Symbol == symbol {
+			return int32(s.QuantityPrecision), int32(s.PricePrecision), nil
+		}
+	}
+	// Symbol not found — fallback to conservative defaults.
+	return 3, 2, nil
+}
+
 // SmartOrder is the "All-in-one" Futures order method that satisfies
 // blockly.TradingProxy.SmartOrder (FR-DESIGN-09, blockly.md §3.6.5, WBS 2.5.6).
 //
@@ -467,7 +484,18 @@ func (p *BinanceProxy) SmartOrder(
 		}
 	}
 
-	// ── Step 4: place the order ───────────────────────────────────────
+	// ── Step 4: truncate quantity/price to exchange precision ─────────
+	qtyPrec, pricePrec, precErr := p.getSymbolPrecision(ctx, symbol)
+	if precErr != nil {
+		// Non-fatal: fallback to conservative precision if ExchangeInfo fails.
+		qtyPrec, pricePrec = 3, 2
+	}
+	quantity = quantity.Truncate(qtyPrec)
+	if !price.IsZero() {
+		price = price.Truncate(pricePrec)
+	}
+
+	// ── Step 5: place the order ───────────────────────────────────────
 	var binanceSide futures.SideType
 	if strings.ToUpper(side) == "LONG" {
 		binanceSide = futures.SideTypeBuy
