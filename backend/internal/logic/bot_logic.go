@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/kh0anh/quantflow/internal/domain"
@@ -246,10 +247,6 @@ func (l *BotLogic) CreateBot(ctx context.Context, userID string, input CreateBot
 //   - JOIN strategies and strategy_versions to resolve strategy_name and version_number.
 //   - Fetch Position and OpenOrders real-time from Binance API (not from DB).
 //   - Return nil when bot does not exist or belongs to another user (handler maps to 404).
-//
-// Note: Position and OpenOrders fetching from Binance is deferred to a future phase
-// (Task 2.8.4 — position_update WebSocket channel). For now, return nil Position
-// and empty OpenOrders slice to satisfy the API contract without blocking this task.
 func (l *BotLogic) GetBotDetail(ctx context.Context, botID, userID string) (*domain.BotDetail, error) {
 	detail, err := l.botRepo.FindByID(ctx, botID, userID)
 	if err != nil {
@@ -259,14 +256,91 @@ func (l *BotLogic) GetBotDetail(ctx context.Context, botID, userID string) (*dom
 		return nil, ErrBotNotFound
 	}
 
-	// TODO(Task 2.8.4): Fetch real-time Position and OpenOrders from Binance API.
-	// For now, set Position=nil and OpenOrders=[] to satisfy the API spec without
-	// blocking this task (api.yaml §BotDetail: position is nullable, open_orders
-	// defaults to empty array).
+	// Default to empty to satisfy the API contract (nullable position, empty orders).
 	detail.Position = nil
 	detail.OpenOrders = []domain.OpenOrder{}
 
+	// Fetch real-time Position and OpenOrders from Binance API using the
+	// user's API key. Non-fatal: if any step fails, return the detail with
+	// nil Position / empty OpenOrders rather than failing the entire request.
+	l.populateBinancePosition(ctx, detail, userID)
+
 	return detail, nil
+}
+
+// populateBinancePosition fetches real-time position risk and open orders from
+// Binance Futures API and populates them into the BotDetail. Any error is
+// swallowed (logged) so that GetBotDetail always returns a usable response.
+func (l *BotLogic) populateBinancePosition(ctx context.Context, detail *domain.BotDetail, userID string) {
+	apiKey, err := l.apiKeyRepo.FindByUserID(ctx, userID)
+	if err != nil || apiKey == nil {
+		return // no API key configured — cannot fetch position
+	}
+
+	proxy, err := exchange.NewBinanceProxy(apiKey.ApiKey, apiKey.SecretKeyEncrypted, l.baseURL, l.aesKey, l.limiter)
+	if err != nil {
+		return // cannot build proxy — skip
+	}
+
+	symbol := detail.Symbol
+
+	// ── Fetch position risk ──────────────────────────────────────────────
+	risks, err := proxy.GetPositionRisk(ctx, symbol)
+	if err == nil {
+		for _, r := range risks {
+			if r.Symbol != symbol {
+				continue
+			}
+			posAmt, _ := strconv.ParseFloat(r.PositionAmt, 64)
+			if posAmt == 0 {
+				continue // no open position
+			}
+
+			side := "Long"
+			if posAmt < 0 {
+				side = "Short"
+				posAmt = -posAmt // absolute for display
+			}
+			entryPrice, _ := strconv.ParseFloat(r.EntryPrice, 64)
+			unrealizedPnl, _ := strconv.ParseFloat(r.UnRealizedProfit, 64)
+			leverage, _ := strconv.Atoi(r.Leverage)
+			marginType := r.MarginType // "isolated" or "cross"
+			if marginType == "isolated" {
+				marginType = "Isolated"
+			} else {
+				marginType = "Cross"
+			}
+
+			detail.Position = &domain.BotPosition{
+				Side:          side,
+				EntryPrice:    entryPrice,
+				Quantity:      posAmt,
+				Leverage:      leverage,
+				UnrealizedPnL: unrealizedPnl,
+				MarginType:    marginType,
+			}
+			break
+		}
+	}
+
+	// ── Fetch open orders ────────────────────────────────────────────────
+	orders, err := proxy.GetOpenOrders(ctx, symbol)
+	if err == nil && len(orders) > 0 {
+		openOrders := make([]domain.OpenOrder, 0, len(orders))
+		for _, o := range orders {
+			price, _ := strconv.ParseFloat(o.Price, 64)
+			qty, _ := strconv.ParseFloat(o.OrigQuantity, 64)
+			openOrders = append(openOrders, domain.OpenOrder{
+				OrderID:  strconv.FormatInt(o.OrderID, 10),
+				Side:     string(o.Side),
+				Type:     string(o.Type),
+				Price:    price,
+				Quantity: qty,
+				Status:   string(o.Status),
+			})
+		}
+		detail.OpenOrders = openOrders
+	}
 }
 
 // DeleteBot removes a bot owned by the given user (WBS 2.7.5, api.yaml §DELETE /bots/{id}).
