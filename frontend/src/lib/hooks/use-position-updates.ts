@@ -1,19 +1,22 @@
 // ===================================================================
 // QuantFlow — usePositionUpdates Hook
-// Task 3.3.5 — Position and PnL Display (Unrealized PnL real-time)
+// Task 3.3.5 + 3.4.5 — Position and PnL Display + Real-time WS
 // ===================================================================
 //
-// Simulates WebSocket `position_update` events:
-//   - Jitters unrealized_pnl and total_pnl every 2 seconds
-//   - Integration point for Task 3.4.4 (WS Manager)
+// Responsibilities:
+//   - Subscribe to WS `position_update` channel for real-time PnL
+//   - Fallback to mock PnL jitter when WS is not connected
 //
 // WS Channel: position_update (websocket.md §3.3)
+// SRS: FR-MON-03
 // ===================================================================
 
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { BotItem } from "@/lib/hooks/use-bot-data";
+import { useWebSocket } from "@/lib/hooks/use-websocket";
+import { parsePositionUpdate } from "@/lib/websocket/ws-channels";
 
 // -----------------------------------------------------------------
 // Types for position updates
@@ -37,9 +40,41 @@ export function usePositionUpdates(bots: BotItem[]) {
 
   const botsRef = useRef(bots);
   botsRef.current = bots;
+  const { connectionState, subscribe, unsubscribe, on, off } = useWebSocket();
 
-  // ------- Mock simulation (replace with WS in Task 3.4.4) -------
+  // ------- WS real-time position updates (Task 3.4.5) -------
   useEffect(() => {
+    if (connectionState !== "connected") return;
+
+    // position_update channel does not require params — server sends
+    // updates for all running bots owned by the authenticated user.
+    subscribe("position_update");
+
+    const handleUpdate = (data: unknown) => {
+      const parsed = parsePositionUpdate(data);
+      if (!parsed) return;
+
+      setPnlOverrides((prev) => {
+        const next = new Map(prev);
+        next.set(parsed.botId, {
+          totalPnl: parsed.totalPnl,
+          unrealizedPnl: parsed.position?.unrealizedPnl ?? null,
+        });
+        return next;
+      });
+    };
+    on("position_update", handleUpdate);
+
+    return () => {
+      off("position_update", handleUpdate);
+      unsubscribe("position_update");
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectionState]);
+
+  // ------- Mock simulation (fallback when WS disconnected) -------
+  useEffect(() => {
+    if (connectionState === "connected") return;
     const runningBots = bots.filter((b) => b.status === "Running");
     if (runningBots.length === 0) return;
 
@@ -76,7 +111,7 @@ export function usePositionUpdates(bots: BotItem[]) {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [bots]);
+  }, [connectionState, bots]);
 
   // ------- Get live PnL for a specific bot -------
   const getLivePnl = useCallback(

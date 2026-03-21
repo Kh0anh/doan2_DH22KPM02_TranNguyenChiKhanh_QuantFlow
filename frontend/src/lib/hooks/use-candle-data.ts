@@ -1,17 +1,17 @@
 // ===================================================================
 // QuantFlow — useCandleData Hook
-// Task 3.3.2 — Candle Chart Component
+// Task 3.3.2 + 3.4.5 — Candle Chart Component + Real-time WS
 // ===================================================================
 //
 // Responsibilities:
 //   - Fetch historical candle data from GET /market/candles (with mock fallback)
 //   - Manage timeframe state (default: 15m)
 //   - Provide trade markers for chart overlay
-//   - Simulate real-time candle updates until WS Manager (Task 3.4.4) is ready
+//   - Subscribe to WS `market_candle` event for real-time candle updates
+//   - Fallback to mock simulation when WS is not connected
 //
-// Integration point for Task 3.4.4:
-//   Replace the simulated interval with actual WS subscription
-//   to `market_ticker` channel → `market_candle` event.
+// WS Channel: market_ticker → event: market_candle (websocket.md §3.1)
+// SRS: FR-MON-02
 // ===================================================================
 
 "use client";
@@ -19,6 +19,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Timeframe, CandleData, TradeMarker } from "@/types";
 import { marketApi } from "@/lib/api-client";
+import { useWebSocket } from "@/lib/hooks/use-websocket";
+import { parseMarketCandle } from "@/lib/websocket/ws-channels";
 
 // -----------------------------------------------------------------
 // Constants
@@ -124,6 +126,7 @@ export function useCandleData(activeSymbol: string) {
   const [error, setError] = useState<string | null>(null);
   const [lastPrice, setLastPrice] = useState<number>(0);
   const [priceChangePercent, setPriceChangePercent] = useState<number>(0);
+  const { connectionState, subscribe, unsubscribe, on, off } = useWebSocket();
 
   const candlesRef = useRef<CandleData[]>([]);
 
@@ -203,8 +206,68 @@ export function useCandleData(activeSymbol: string) {
     };
   }, [activeSymbol, timeframe]);
 
-  // ------- Mock real-time candle updates (remove when Task 3.4.4) -------
+  // ------- WS real-time candle updates (Task 3.4.5) -------
   useEffect(() => {
+    if (connectionState !== "connected" || !activeSymbol) return;
+
+    // market_candle events come through the market_ticker channel
+    subscribe("market_ticker", { symbol: activeSymbol });
+
+    const handleCandle = (data: unknown) => {
+      const parsed = parseMarketCandle(data);
+      if (!parsed || parsed.symbol !== activeSymbol) return;
+      if (parsed.timeframe !== timeframe) return;
+
+      const candleTime = new Date(parsed.candle.openTime).getTime() / 1000;
+      const newCandle: CandleData = {
+        time: candleTime,
+        open: parsed.candle.open,
+        high: parsed.candle.high,
+        low: parsed.candle.low,
+        close: parsed.candle.close,
+        volume: parsed.candle.volume,
+      };
+
+      setCandles((prev) => {
+        const current = [...prev];
+        if (parsed.candle.isClosed) {
+          // Closed candle — replace last if same time, else append
+          if (current.length > 0 && current[current.length - 1].time === candleTime) {
+            current[current.length - 1] = newCandle;
+          } else {
+            current.push(newCandle);
+          }
+        } else {
+          // Forming candle — update last candle in place
+          if (current.length > 0 && current[current.length - 1].time === candleTime) {
+            current[current.length - 1] = newCandle;
+          } else {
+            current.push(newCandle);
+          }
+        }
+        candlesRef.current = current;
+        return current;
+      });
+
+      setLastPrice(parsed.candle.close);
+      if (candlesRef.current.length > 0) {
+        const first = candlesRef.current[0];
+        const pct = ((parsed.candle.close - first.open) / first.open) * 100;
+        setPriceChangePercent(Math.round(pct * 100) / 100);
+      }
+    };
+    on("market_candle", handleCandle);
+
+    return () => {
+      off("market_candle", handleCandle);
+      unsubscribe("market_ticker", { symbol: activeSymbol });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectionState, activeSymbol, timeframe]);
+
+  // ------- Mock real-time candle updates (fallback when WS disconnected) -------
+  useEffect(() => {
+    if (connectionState === "connected") return;
     if (candlesRef.current.length === 0) return;
 
     const interval = setInterval(() => {
@@ -231,7 +294,7 @@ export function useCandleData(activeSymbol: string) {
     }, MOCK_UPDATE_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [candles.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [connectionState, candles.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ------- Change timeframe callback -------
   const changeTimeframe = useCallback((tf: Timeframe) => {

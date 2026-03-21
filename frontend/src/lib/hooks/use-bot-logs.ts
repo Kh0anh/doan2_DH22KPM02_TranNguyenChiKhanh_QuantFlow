@@ -1,19 +1,25 @@
 // ===================================================================
 // QuantFlow — useBotLogs Hook
-// Task 3.3.4 — Bot Logs Console
+// Task 3.3.4 + 3.4.5 — Bot Logs Console + Real-time WS
 // ===================================================================
 //
 // Responsibilities:
 //   - Fetch historical logs from GET /bots/{id}/logs (with mock fallback)
-//   - Simulate real-time log append (until WS Task 3.4.4)
+//   - Subscribe to WS `bot_logs` channel for real-time log append
+//   - Fallback to mock simulation when WS is not connected
 //   - Limit buffer to 1000 lines (virtual scroll requirement)
 //   - Provide cursor for loading older logs
+//
+// WS Channel: bot_logs (websocket.md §3.2)
+// SRS: FR-RUN-05
 // ===================================================================
 
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { botApi } from "@/lib/api-client";
+import { useWebSocket } from "@/lib/hooks/use-websocket";
+import { parseBotLog } from "@/lib/websocket/ws-channels";
 
 // -----------------------------------------------------------------
 // Types
@@ -90,6 +96,7 @@ export function useBotLogs(botId: string) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const cursorRef = useRef<string | null>(null);
+  const { connectionState, subscribe, unsubscribe, on, off } = useWebSocket();
 
   // ------- Fetch initial logs -------
   useEffect(() => {
@@ -137,8 +144,52 @@ export function useBotLogs(botId: string) {
     return () => { cancelled = true; };
   }, [botId]);
 
-  // ------- Mock real-time log append (remove when Task 3.4.4) -------
+  // ------- WS real-time log append (Task 3.4.5) -------
   useEffect(() => {
+    if (connectionState !== "connected" || !botId) return;
+
+    subscribe("bot_logs", { bot_id: botId });
+
+    const handleLog = (data: unknown) => {
+      const parsed = parseBotLog(data);
+      if (!parsed || parsed.botId !== botId) return;
+
+      const time = new Date(parsed.log.createdAt);
+      let level: LogEntry["level"] = "info";
+      if (parsed.log.actionDecision.includes("lệnh")) level = "order";
+      else if (parsed.log.actionDecision.includes("Bỏ qua")) level = "skip";
+      else if (parsed.log.message.toLowerCase().includes("lỗi") || parsed.log.message.toLowerCase().includes("error")) level = "error";
+
+      const newEntry: LogEntry = {
+        id: parsed.log.id,
+        timestamp: parsed.log.createdAt,
+        formattedTime: formatTime(time),
+        level,
+        message: parsed.log.actionDecision
+          ? `[${parsed.log.actionDecision}] ${parsed.log.message}`
+          : parsed.log.message,
+      };
+
+      setLogs((prev) => {
+        const next = [...prev, newEntry];
+        if (next.length > MAX_LOG_LINES) {
+          return next.slice(next.length - MAX_LOG_LINES);
+        }
+        return next;
+      });
+    };
+    on("bot_log", handleLog);
+
+    return () => {
+      off("bot_log", handleLog);
+      unsubscribe("bot_logs", { bot_id: botId });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectionState, botId]);
+
+  // ------- Mock real-time log append (fallback when WS disconnected) -------
+  useEffect(() => {
+    if (connectionState === "connected") return;
     if (isLoading) return;
 
     let idCounter = 20000;
@@ -169,7 +220,7 @@ export function useBotLogs(botId: string) {
     }, 3000 + Math.random() * 2000);
 
     return () => clearInterval(interval);
-  }, [isLoading]);
+  }, [connectionState, isLoading]);
 
   // ------- Load more (older logs) -------
   const loadMore = useCallback(async () => {
