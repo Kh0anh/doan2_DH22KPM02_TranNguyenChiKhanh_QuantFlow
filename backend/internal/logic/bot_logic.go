@@ -219,7 +219,7 @@ func (l *BotLogic) CreateBot(ctx context.Context, userID string, input CreateBot
 		TradingProxy:      binanceProxy,
 	}
 
-	if err := l.botManager.StartBot(ctx, botConfig); err != nil {
+	if err := l.botManager.StartBot(context.Background(), botConfig); err != nil {
 		// BotManager.StartBot() failed (e.g., bot already running — should not happen
 		// since we just created a new ID, or other internal error).
 		// Persist status=Error so the bot row is visible to the user for debugging.
@@ -449,7 +449,7 @@ func (l *BotLogic) StartBot(ctx context.Context, botID, userID string) (*BotStar
 		TradingProxy:      binanceProxy,
 	}
 
-	if err := l.botManager.StartBot(ctx, botConfig); err != nil {
+	if err := l.botManager.StartBot(context.Background(), botConfig); err != nil {
 		return nil, fmt.Errorf("bot_logic: StartBot: start goroutine: %w", err)
 	}
 
