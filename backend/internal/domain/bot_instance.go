@@ -40,7 +40,7 @@ type BotInstance struct {
 	BotName           string    `gorm:"type:varchar(100);not null"                     json:"bot_name"`
 	Symbol            string    `gorm:"type:varchar(20);not null"                      json:"symbol"`
 	Status            string    `gorm:"type:varchar(20);not null;default:'Running'"    json:"status"`
-	TotalPnL          string    `gorm:"type:decimal(18,8);not null;default:0"          json:"total_pnl"`
+	TotalPnL          string    `gorm:"column:total_pnl;type:decimal(18,8);not null;default:0" json:"total_pnl"`
 	CreatedAt         time.Time `gorm:"not null;autoCreateTime"                        json:"created_at"`
 	UpdatedAt         time.Time `gorm:"autoUpdateTime"                                 json:"updated_at"`
 }
