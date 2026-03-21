@@ -75,8 +75,8 @@ type BotDetail struct {
 	StrategyID      string       `json:"strategy_id"`
 	StrategyName    string       `json:"strategy_name"`
 	StrategyVersion int          `json:"strategy_version"`
-	Position        *BotPosition `json:"position"`    // nil when no position
-	OpenOrders      []OpenOrder  `json:"open_orders"` // empty slice when no orders
+	Position        *BotPosition `gorm:"-" json:"position"`    // nil when no position
+	OpenOrders      []OpenOrder  `gorm:"-" json:"open_orders"` // empty slice when no orders
 	CreatedAt       time.Time    `json:"created_at"`
 	UpdatedAt       time.Time    `json:"updated_at"`
 }
