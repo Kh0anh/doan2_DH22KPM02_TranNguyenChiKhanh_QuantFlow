@@ -176,13 +176,22 @@ func (r *candleRepository) InsertBatch(ctx context.Context, candles []domain.Can
 	return nil
 }
 
-// QueryCandles retrieves up to limit closed candles for the given (symbol,
-// interval) pair, optionally filtered by a time range, ordered by open_time ASC.
+// QueryCandles retrieves up to limit candles for the given (symbol,
+// interval) pair, optionally filtered by a time range, returned in
+// chronological (open_time ASC) order.
+//
+// When **no** start time is specified (the default frontend request), the
+// query selects the NEWEST N candles by querying DESC first, then reverses
+// in Go to return ASC order. This ensures the chart always shows the most
+// recent market activity rather than stale data from the beginning of
+// history.
+//
+// When a start time IS specified, the query uses ASC directly since the
+// caller explicitly requested a specific time range.
 //
 // The query hits the idx_candles_symbol_interval_time composite index
-// (symbol, interval, open_time DESC). PostgreSQL will use an index scan for the
-// WHERE clause then sort the result set; for typical UI limits (≤1500 rows) this
-// is well within the < 500 ms NFR-PERF target (SRS §3.1).
+// (symbol, interval, open_time DESC). For typical UI limits (≤1500 rows)
+// this is well within the < 500 ms NFR-PERF target (SRS §3.1).
 func (r *candleRepository) QueryCandles(
 	ctx context.Context,
 	symbol, interval string,
@@ -199,14 +208,38 @@ func (r *candleRepository) QueryCandles(
 		q = q.Where("open_time <= ?", *end)
 	}
 
+	// When no start time is given, fetch the LATEST N candles by querying
+	// ORDER BY open_time DESC, then reverse to chronological (ASC) order.
+	// This prevents the chart from showing ancient data when the DB
+	// contains many historical candles (e.g., 30+ days of 1m data).
+	needsReverse := start == nil
+
 	var candles []domain.Candle
-	err := q.
-		Order("open_time ASC").
-		Limit(limit).
-		Find(&candles).Error
+	var err error
+
+	if needsReverse {
+		err = q.
+			Order("open_time DESC").
+			Limit(limit).
+			Find(&candles).Error
+	} else {
+		err = q.
+			Order("open_time ASC").
+			Limit(limit).
+			Find(&candles).Error
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("candle_repo: QueryCandles(%s, %s): %w", symbol, interval, err)
 	}
+
+	// Reverse to chronological (ASC) order when we queried DESC.
+	if needsReverse {
+		for i, j := 0, len(candles)-1; i < j; i, j = i+1, j-1 {
+			candles[i], candles[j] = candles[j], candles[i]
+		}
+	}
+
 	return candles, nil
 }
 
