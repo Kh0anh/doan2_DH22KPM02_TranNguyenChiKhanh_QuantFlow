@@ -71,6 +71,19 @@ func toDecimal(v interface{}) decimal.Decimal {
 		return decimal.NewFromFloat(val)
 	case decimal.Decimal:
 		return val
+	case string:
+		// Lifecycle variables loaded from DB arrive as JSON strings because
+		// shopspring/decimal.Decimal MarshalJSON produces a quoted number.
+		// json.Unmarshal into interface{} keeps it as a string.
+		d, err := decimal.NewFromString(val)
+		if err != nil {
+			return decimal.Zero
+		}
+		return d
+	case int:
+		return decimal.NewFromInt(int64(val))
+	case int64:
+		return decimal.NewFromInt(val)
 	default:
 		return decimal.Zero
 	}
