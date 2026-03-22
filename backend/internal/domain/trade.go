@@ -37,7 +37,7 @@ type TradeHistory struct {
 	Quantity    string    `gorm:"type:decimal(18,8);not null"                    json:"quantity"`
 	FillPrice   string    `gorm:"type:decimal(18,8);not null"                    json:"fill_price"`
 	Fee         string    `gorm:"type:decimal(18,8);not null"                    json:"fee"`
-	RealizedPnL string    `gorm:"type:decimal(18,8);not null"                    json:"realized_pnl"`
+	RealizedPnL string    `gorm:"column:realized_pnl;type:decimal(18,8);not null"    json:"realized_pnl"`
 	Status      string    `gorm:"type:varchar(20);not null"                      json:"status"`       // "Filled" or "Canceled"
 	ExecutedAt  time.Time `gorm:"not null"                                       json:"executed_at"`
 }
