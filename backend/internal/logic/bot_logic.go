@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -812,4 +813,115 @@ type RunningBotSnapshot struct {
 	// Proxy is the live BinanceProxy for fetching position and orders.
 	// Implements websocket.PositionProxy via Go structural typing.
 	Proxy *exchange.BinanceProxy
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  RestoreRunningBots — Server Startup Restore (WBS 5.1.3)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// RestoreRunningBots queries all bot_instances with status='Running' and
+// re-launches their goroutines. Called once at server startup (from router.Setup)
+// to ensure bots survive server restarts.
+//
+// Per-bot failures (missing api_key, decrypt error, invalid logic_json) are
+// logged and the bot's status is set to Error — they do NOT prevent other
+// bots from being restored (fault isolation).
+//
+// This method mirrors the flow of StartBot() (Task 2.7.6) but operates
+// across all users, without HTTP context.
+func (l *BotLogic) RestoreRunningBots(ctx context.Context) {
+	bots, err := l.botRepo.FindAllRunning(ctx)
+	if err != nil {
+		slog.Error("bot_logic: RestoreRunningBots: failed to query Running bots",
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+
+	if len(bots) == 0 {
+		slog.Info("bot_logic: RestoreRunningBots: no Running bots to restore")
+		return
+	}
+
+	slog.Info("bot_logic: RestoreRunningBots: found bots to restore",
+		slog.Int("count", len(bots)),
+	)
+
+	restored := 0
+	for _, botInstance := range bots {
+		if restoreErr := l.restoreOneBot(ctx, botInstance); restoreErr != nil {
+			slog.Warn("bot_logic: RestoreRunningBots: failed to restore bot — marking as Error",
+				slog.String("bot_id", botInstance.ID),
+				slog.String("bot_name", botInstance.BotName),
+				slog.String("error", restoreErr.Error()),
+			)
+			_ = l.botRepo.UpdateStatus(ctx, botInstance.ID, domain.BotStatusError)
+		} else {
+			restored++
+			slog.Info("bot_logic: RestoreRunningBots: bot restored successfully",
+				slog.String("bot_id", botInstance.ID),
+				slog.String("bot_name", botInstance.BotName),
+				slog.String("symbol", botInstance.Symbol),
+			)
+		}
+	}
+
+	slog.Info("bot_logic: RestoreRunningBots: restore complete",
+		slog.Int("restored", restored),
+		slog.Int("total", len(bots)),
+	)
+}
+
+// restoreOneBot rebuilds a single bot's goroutine from its persisted state.
+// Follows the same steps as StartBot (Task 2.7.6) but skips user-input
+// validation — the bot was already validated when first created.
+func (l *BotLogic) restoreOneBot(ctx context.Context, botInstance *domain.BotInstance) error {
+	// Step 1: Load pinned strategy version for LogicJSON.
+	strategyVersion, err := l.strategyRepo.FindVersionByID(ctx, botInstance.StrategyVersionID)
+	if err != nil {
+		return fmt.Errorf("find strategy version %s: %w", botInstance.StrategyVersionID, err)
+	}
+	if strategyVersion == nil {
+		return fmt.Errorf("strategy version %s not found", botInstance.StrategyVersionID)
+	}
+
+	// Step 2: Extract interval from logic_json.
+	interval, err := extractIntervalFromLogicJSON(strategyVersion.LogicJSON)
+	if err != nil {
+		return fmt.Errorf("extract interval: %w", err)
+	}
+
+	// Step 3: Resolve API key for the bot's owner.
+	apiKey, err := l.apiKeyRepo.FindByUserID(ctx, botInstance.UserID)
+	if err != nil {
+		return fmt.Errorf("find api_key for user %s: %w", botInstance.UserID, err)
+	}
+	if apiKey == nil {
+		return fmt.Errorf("no api_key for user %s", botInstance.UserID)
+	}
+
+	// Step 4: Build BinanceProxy.
+	binanceProxy, err := exchange.NewBinanceProxy(apiKey.ApiKey, apiKey.SecretKeyEncrypted, l.baseURL, l.aesKey, l.limiter)
+	if err != nil {
+		return fmt.Errorf("build binance proxy: %w", err)
+	}
+
+	// Step 5: Launch bot goroutine via BotManager.
+	botConfig := bot.BotConfig{
+		BotID:             botInstance.ID,
+		UserID:            botInstance.UserID,
+		StrategyVersionID: botInstance.StrategyVersionID,
+		LogicJSON:         strategyVersion.LogicJSON,
+		Symbol:            botInstance.Symbol,
+		APIKeyID:          botInstance.APIKeyID,
+		Interval:          interval,
+		CandleRepo:        l.candleRepo,
+		TradingProxy:      binanceProxy,
+	}
+
+	if err := l.botManager.StartBot(ctx, botConfig); err != nil {
+		return fmt.Errorf("start bot goroutine: %w", err)
+	}
+
+	return nil
 }

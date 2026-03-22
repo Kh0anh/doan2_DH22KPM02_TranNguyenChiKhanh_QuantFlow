@@ -192,6 +192,12 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 			)
 			botHandler := handler.NewBotHandler(botLogic)
 
+			// WBS 5.1.3: Restore bots that were Running before server restart.
+			// Must be called AFTER BotManager.SetListener() so that restored bots
+			// are correctly subscribed to kline WS streams. Runs in a goroutine
+			// so it doesn't block the HTTP server from accepting connections.
+			go botLogic.RestoreRunningBots(ctx)
+
 			// WBS 2.8.4: Position Update Channel — polls Binance every 5s for all
 			// Running Bots and fans out position/PnL/open-orders to subscribed clients.
 			// A BotPositionFetcherFunc adapter bridges BotLogic.GetRunningBotsSnapshot()

@@ -52,6 +52,11 @@ type BotRepository interface {
 	// (Task 2.8.4) to bulk-fetch metadata for the position_update polling loop.
 	// Returns an empty slice (not an error) when none of the IDs are found.
 	FindRunningByIDs(ctx context.Context, botIDs []string) ([]*domain.BotInstance, error)
+
+	// FindAllRunning returns all bot_instances rows with status='Running',
+	// regardless of user_id. Used at server startup to restore bot goroutines
+	// that were Running when the previous server process exited (WBS 5.1.3).
+	FindAllRunning(ctx context.Context) ([]*domain.BotInstance, error)
 }
 
 // Sentinel errors returned by BotRepository methods.
@@ -276,6 +281,21 @@ func (r *botRepository) FindRunningByIDs(ctx context.Context, botIDs []string) (
 		Where("id IN ? AND status = ?", botIDs, domain.BotStatusRunning).
 		Find(&bots).Error; err != nil {
 		return nil, fmt.Errorf("bot_repo: FindRunningByIDs: %w", err)
+	}
+	return bots, nil
+}
+
+// FindAllRunning returns all bot_instances rows with status='Running',
+// regardless of user_id. Used only at server startup to restore bot goroutines
+// that were Running when the previous server process exited (WBS 5.1.3).
+//
+// Leverages idx_bot_status on (status) for efficient lookup.
+func (r *botRepository) FindAllRunning(ctx context.Context) ([]*domain.BotInstance, error) {
+	var bots []*domain.BotInstance
+	if err := r.db.WithContext(ctx).
+		Where("status = ?", domain.BotStatusRunning).
+		Find(&bots).Error; err != nil {
+		return nil, fmt.Errorf("bot_repo: FindAllRunning: %w", err)
 	}
 	return bots, nil
 }
