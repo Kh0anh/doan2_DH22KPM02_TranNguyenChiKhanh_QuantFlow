@@ -125,13 +125,13 @@ export function useBotData() {
                 totalPnl: Number(detail.total_pnl) || b.totalPnl,
                 position: detail.position
                   ? {
-                      side: detail.position.side,
-                      entryPrice: detail.position.entry_price,
-                      quantity: detail.position.quantity,
-                      leverage: detail.position.leverage,
-                      unrealizedPnl: detail.position.unrealized_pnl,
-                      marginType: detail.position.margin_type,
-                    }
+                    side: detail.position.side,
+                    entryPrice: detail.position.entry_price,
+                    quantity: detail.position.quantity,
+                    leverage: detail.position.leverage,
+                    unrealizedPnl: detail.position.unrealized_pnl,
+                    marginType: detail.position.margin_type,
+                  }
                   : null,
                 openOrders: (detail.open_orders ?? []).map((o) => ({
                   orderId: o.order_id,
@@ -188,10 +188,10 @@ export function useBotData() {
         prev.map((b) =>
           b.id === botId
             ? {
-                ...b,
-                status: "Stopped" as const,
-                position: closePosition ? null : b.position,
-              }
+              ...b,
+              status: "Stopped" as const,
+              position: closePosition ? null : b.position,
+            }
             : b,
         ),
       );
