@@ -7,7 +7,7 @@
 //   - Fetch trades from GET /trades (cursor pagination, multi-filter)
 //   - Infinite scroll — loadMore appends to existing list
 //   - Client-side CSV fallback when API export unavailable
-//   - Mock data fallback when API unavailable
+//   - Fetch bot list from GET /bots for dynamic filter dropdown
 // ===================================================================
 
 "use client";
@@ -15,8 +15,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   tradeApi,
+  botApi,
   type TradeRecordResponse,
   type TradeFilterParams,
+  type BotSummaryResponse,
 } from "@/lib/api-client";
 
 // -----------------------------------------------------------------
@@ -44,46 +46,10 @@ export interface TradeFilters {
   status: string; // "" = all
 }
 
-// -----------------------------------------------------------------
-// Mock data
-// -----------------------------------------------------------------
-
-const MOCK_BOTS = ["BTC-Scalper", "ETH-Swing", "SOL-Breakout", "BNB-Grid"];
-const MOCK_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"];
-const MOCK_SIDES: ("Long" | "Short")[] = ["Long", "Short"];
-const MOCK_PRICES: Record<string, number> = {
-  BTCUSDT: 67400, ETHUSDT: 3420, SOLUSDT: 142, BNBUSDT: 580,
-};
-
-function generateMockTrades(count: number): TradeItem[] {
-  const trades: TradeItem[] = [];
-  const now = Date.now();
-
-  for (let i = 0; i < count; i++) {
-    const botIdx = i % MOCK_BOTS.length;
-    const symbol = MOCK_SYMBOLS[botIdx];
-    const side = MOCK_SIDES[i % 2];
-    const basePrice = MOCK_PRICES[symbol] ?? 100;
-    const fillPrice = basePrice + (Math.random() - 0.5) * basePrice * 0.02;
-    const qty = symbol === "BTCUSDT" ? 0.01 : symbol === "ETHUSDT" ? 0.5 : 1;
-    const pnl = (Math.random() - 0.4) * 20;
-
-    trades.push({
-      id: `trade-${i + 1}`,
-      botId: `bot-00${botIdx + 1}`,
-      botName: MOCK_BOTS[botIdx],
-      symbol,
-      side,
-      quantity: qty,
-      fillPrice: Math.round(fillPrice * 100) / 100,
-      fee: Math.round(fillPrice * qty * 0.0004 * 100) / 100,
-      realizedPnl: Math.round(pnl * 100) / 100,
-      status: Math.random() > 0.1 ? "Filled" : "Canceled",
-      executedAt: new Date(now - i * 3600000 - Math.random() * 3600000).toISOString(),
-    });
-  }
-
-  return trades;
+/** Bot option for the filter dropdown. */
+export interface BotOption {
+  id: string;
+  name: string;
 }
 
 // -----------------------------------------------------------------
@@ -115,6 +81,7 @@ export function useTradeHistory() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
+  const [bots, setBots] = useState<BotOption[]>([]);
   const [filters, setFilters] = useState<TradeFilters>({
     botId: "",
     symbol: "",
@@ -122,7 +89,19 @@ export function useTradeHistory() {
     status: "",
   });
   const cursorRef = useRef<string | null>(null);
-  const isMockRef = useRef(false);
+
+  // ------- Fetch bot list for filter dropdown -------
+  useEffect(() => {
+    botApi
+      .list()
+      .then((list: BotSummaryResponse[]) => {
+        setBots(list.map((b) => ({ id: b.id, name: b.bot_name })));
+      })
+      .catch(() => {
+        // If bots API fails, leave dropdown empty
+        setBots([]);
+      });
+  }, []);
 
   // ------- Build API params from filters -------
   const buildParams = useCallback(
@@ -147,25 +126,14 @@ export function useTradeHistory() {
       setTrades(res.data.map(mapTrade));
       setHasMore(res.pagination.has_more);
       cursorRef.current = res.pagination.next_cursor;
-      isMockRef.current = false;
     } catch {
-      // Mock fallback
-      const allMock = generateMockTrades(30);
-      // Apply client-side filter
-      const filtered = allMock.filter((t) => {
-        if (filters.botId && t.botId !== filters.botId) return false;
-        if (filters.symbol && t.symbol !== filters.symbol) return false;
-        if (filters.side && t.side !== filters.side) return false;
-        if (filters.status && t.status !== filters.status) return false;
-        return true;
-      });
-      setTrades(filtered);
+      // API unavailable — show empty state instead of mock data
+      setTrades([]);
       setHasMore(false);
-      isMockRef.current = true;
     } finally {
       setIsLoading(false);
     }
-  }, [buildParams, filters]);
+  }, [buildParams]);
 
   useEffect(() => {
     fetchTrades();
@@ -181,7 +149,7 @@ export function useTradeHistory() {
       setHasMore(res.pagination.has_more);
       cursorRef.current = res.pagination.next_cursor;
     } catch {
-      // Silently fail in mock mode
+      // Silently fail — don't break infinite scroll
     } finally {
       setIsLoadingMore(false);
     }
@@ -201,7 +169,7 @@ export function useTradeHistory() {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      // Client-side CSV fallback
+      // Client-side CSV fallback using currently loaded trades
       const headers = [
         "ID",
         "Bot",
@@ -253,6 +221,7 @@ export function useTradeHistory() {
     isLoadingMore,
     hasMore,
     filters,
+    bots,
     updateFilter,
     loadMore,
     exportCSV,

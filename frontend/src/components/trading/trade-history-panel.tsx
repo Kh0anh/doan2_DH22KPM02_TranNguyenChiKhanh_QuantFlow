@@ -37,13 +37,6 @@ import { useTradeHistory, type TradeItem } from "@/lib/hooks/use-trade-history";
 const SYMBOLS = ["", "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"];
 const SIDES = ["", "Long", "Short"];
 const STATUSES = ["", "Filled", "Canceled"];
-const BOTS = [
-  { value: "", label: "Tất cả Bot" },
-  { value: "bot-001", label: "BTC-Scalper" },
-  { value: "bot-002", label: "ETH-Swing" },
-  { value: "bot-003", label: "SOL-Breakout" },
-  { value: "bot-004", label: "BNB-Grid" },
-];
 
 // -----------------------------------------------------------------
 // Format helpers
@@ -113,6 +106,7 @@ export function TradeHistoryPanel() {
     isLoadingMore,
     hasMore,
     filters,
+    bots,
     updateFilter,
     loadMore,
     exportCSV,
@@ -149,12 +143,10 @@ export function TradeHistoryPanel() {
             <SelectValue placeholder="Tất cả Bot" />
           </SelectTrigger>
           <SelectContent>
-            {BOTS.map((b) => (
-              <SelectItem
-                key={b.value || "__all__"}
-                value={b.value || "__all__"}
-              >
-                {b.label}
+            <SelectItem value="__all__">Tất cả Bot</SelectItem>
+            {bots.map((b) => (
+              <SelectItem key={b.id} value={b.id}>
+                {b.name}
               </SelectItem>
             ))}
           </SelectContent>

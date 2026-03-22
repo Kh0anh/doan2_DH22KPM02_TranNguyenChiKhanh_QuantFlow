@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/adshao/go-binance/v2/futures"
+	"github.com/kh0anh/quantflow/internal/domain"
 	pkgcrypto "github.com/kh0anh/quantflow/pkg/crypto"
 	"github.com/shopspring/decimal"
 )
@@ -423,11 +425,11 @@ func (p *BinanceProxy) SmartOrder(
 	price, quantity decimal.Decimal,
 	leverage int,
 	marginType string,
-) error {
+) (*domain.OrderResult, error) {
 	// ── Step 1: fetch current account state for this symbol ──────────────
 	risk, err := p.getPositionRiskForSymbol(ctx, symbol)
 	if err != nil {
-		return fmt.Errorf("exchange: SmartOrder(%s): preflight position check: %w", symbol, err)
+		return nil, fmt.Errorf("exchange: SmartOrder(%s): preflight position check: %w", symbol, err)
 	}
 
 	var currentLeverage int
@@ -451,7 +453,7 @@ func (p *BinanceProxy) SmartOrder(
 			Symbol(symbol).
 			Leverage(leverage).
 			Do(ctx); leverageErr != nil {
-			return fmt.Errorf("exchange: SmartOrder(%s): ChangeLeverage to %dx: %w", symbol, leverage, leverageErr)
+			return nil, fmt.Errorf("exchange: SmartOrder(%s): ChangeLeverage to %dx: %w", symbol, leverage, leverageErr)
 		}
 	}
 
@@ -478,7 +480,7 @@ func (p *BinanceProxy) SmartOrder(
 				// requested value ("No need to change"). Suppress that specific
 				// case to make this pre-flight idempotent.
 				if !strings.Contains(marginErr.Error(), "No need to change") {
-					return fmt.Errorf("exchange: SmartOrder(%s): ChangeMarginType to %s: %w", symbol, mt, marginErr)
+					return nil, fmt.Errorf("exchange: SmartOrder(%s): ChangeMarginType to %s: %w", symbol, mt, marginErr)
 				}
 			}
 		}
@@ -520,10 +522,14 @@ func (p *BinanceProxy) SmartOrder(
 		svc = svc.Price(price.String()).TimeInForce(futures.TimeInForceTypeGTC)
 	}
 
-	if _, orderErr := svc.Do(ctx); orderErr != nil {
-		return fmt.Errorf("exchange: SmartOrder(%s %s %s): %w", symbol, side, orderType, orderErr)
+	res, orderErr := svc.Do(ctx)
+	if orderErr != nil {
+		return nil, fmt.Errorf("exchange: SmartOrder(%s %s %s): %w", symbol, side, orderType, orderErr)
 	}
-	return nil
+
+	// ── Step 6: build OrderResult from Binance response ──────────────
+	result := buildOrderResult(res, symbol, side)
+	return result, nil
 }
 
 // ClosePosition closes the entire open position for the given symbol by
@@ -531,22 +537,36 @@ func (p *BinanceProxy) SmartOrder(
 // No-op (returns nil) when no position is currently open.
 // This method satisfies blockly.TradingProxy.ClosePosition via Go structural
 // typing (FR-DESIGN-10, blockly.md §3.6.6, WBS 2.5.6).
-func (p *BinanceProxy) ClosePosition(ctx context.Context, symbol string) error {
+func (p *BinanceProxy) ClosePosition(ctx context.Context, symbol string) (*domain.OrderResult, error) {
 	risk, err := p.getPositionRiskForSymbol(ctx, symbol)
 	if err != nil {
-		return fmt.Errorf("exchange: ClosePosition(%s): %w", symbol, err)
+		return nil, fmt.Errorf("exchange: ClosePosition(%s): %w", symbol, err)
 	}
 	if risk == nil {
-		return nil // no position — nothing to close
+		return nil, nil // no position — nothing to close
 	}
 
 	posAmt, parseErr := decimal.NewFromString(risk.PositionAmt)
 	if parseErr != nil {
-		return fmt.Errorf("exchange: ClosePosition(%s): parse PositionAmt %q: %w", symbol, risk.PositionAmt, parseErr)
+		return nil, fmt.Errorf("exchange: ClosePosition(%s): parse PositionAmt %q: %w", symbol, risk.PositionAmt, parseErr)
 	}
 	if posAmt.IsZero() {
-		return nil // zero position — nothing to close
+		return nil, nil // zero position — nothing to close
 	}
+
+	// Determine the position side for the OrderResult.
+	originalSide := "LONG"
+	if posAmt.IsNegative() {
+		originalSide = "SHORT"
+	}
+
+	// Capture realized PnL before closing (from PositionRisk data).
+	realizedPnL := decimal.Zero
+	// Note: Binance PositionRisk doesn't have a realizedPnL field directly;
+	// we compute it from the unrealized PnL at close time as an approximation.
+	// The actual realized PnL is better captured from the order response or
+	// account income history. For now we record decimal.Zero and let the
+	// user reconcile via Binance account statements.
 
 	// Close side is opposite to open side.
 	var closeSide futures.SideType
@@ -559,7 +579,7 @@ func (p *BinanceProxy) ClosePosition(ctx context.Context, symbol string) error {
 		posAmt = posAmt.Abs()
 	}
 
-	_, orderErr := p.client.NewCreateOrderService().
+	res, orderErr := p.client.NewCreateOrderService().
 		Symbol(symbol).
 		Side(closeSide).
 		Type(futures.OrderTypeMarket).
@@ -567,7 +587,49 @@ func (p *BinanceProxy) ClosePosition(ctx context.Context, symbol string) error {
 		ReduceOnly(true).
 		Do(ctx)
 	if orderErr != nil {
-		return fmt.Errorf("exchange: ClosePosition(%s): %w", symbol, orderErr)
+		return nil, fmt.Errorf("exchange: ClosePosition(%s): %w", symbol, orderErr)
 	}
-	return nil
+
+	result := buildOrderResult(res, symbol, originalSide)
+	result.RealizedPnL = realizedPnL
+	return result, nil
+}
+
+// buildOrderResult converts a Binance CreateOrderResponse into a domain.OrderResult.
+// Shared by SmartOrder and ClosePosition.
+func buildOrderResult(res *futures.CreateOrderResponse, symbol, side string) *domain.OrderResult {
+	if res == nil {
+		return nil
+	}
+
+	qty, _ := decimal.NewFromString(res.ExecutedQuantity)
+	avgPrice, _ := decimal.NewFromString(res.AvgPrice)
+	// Binance Futures doesn't always populate AvgPrice on MARKET fills.
+	// Fallback: compute from cumQuote / executedQty.
+	if avgPrice.IsZero() && !qty.IsZero() {
+		cumQuote, _ := decimal.NewFromString(res.CumQuote)
+		if !cumQuote.IsZero() {
+			avgPrice = cumQuote.Div(qty)
+		}
+	}
+
+	// Commission is not directly in CreateOrderResponse for Futures.
+	// Estimate fee as qty * avgPrice * 0.0004 (taker fee).
+	fee := qty.Mul(avgPrice).Mul(decimal.NewFromFloat(0.0004))
+
+	orderTime := time.UnixMilli(res.UpdateTime)
+	if res.UpdateTime == 0 {
+		orderTime = time.Now().UTC()
+	}
+
+	return &domain.OrderResult{
+		OrderID:  res.OrderID,
+		Symbol:   symbol,
+		Side:     strings.ToUpper(side),
+		Quantity: qty,
+		Price:    avgPrice,
+		Fee:      fee,
+		Status:   string(res.Status),
+		Time:     orderTime,
+	}
 }

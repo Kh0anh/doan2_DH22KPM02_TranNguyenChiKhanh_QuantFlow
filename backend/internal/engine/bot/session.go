@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/kh0anh/quantflow/internal/domain"
 	"github.com/kh0anh/quantflow/internal/engine/blockly"
 )
 
@@ -94,6 +95,11 @@ type SessionResult struct {
 	// (Task 2.7.3) only when the slice is non-nil — nil means no lifecycle
 	// variable block was touched during the session.
 	UpdatedLifecycleVars map[string]interface{}
+
+	// TradeResults contains the trade execution details collected during this
+	// session. Each entry corresponds to one SmartOrder or ClosePosition call
+	// that succeeded. The BotManager persists these to trade_history (Task 2.8.5).
+	TradeResults []*domain.OrderResult
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -193,6 +199,7 @@ func (s *Session) Run(ctx context.Context) (SessionResult, error) {
 	result := SessionResult{
 		UnitsUsed:            execCtx.UnitTracker.Used(),
 		UpdatedLifecycleVars: execCtx.LifecycleVars,
+		TradeResults:         execCtx.TradeResults,
 	}
 
 	// Context cancellation means the bot was stopped — not a logic error.

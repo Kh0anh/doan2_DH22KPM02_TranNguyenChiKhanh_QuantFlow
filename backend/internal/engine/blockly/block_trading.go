@@ -156,11 +156,17 @@ func executeTradeSmartOrder(ctx *ExecutionContext, block *Block) (interface{}, e
 	quantity := usdtQty.Div(refPrice)
 
 	// ── Delegate to exchange proxy ────────────────────────────────────────────
-	if err := ctx.TradingProxy.SmartOrder(
+	orderResult, err := ctx.TradingProxy.SmartOrder(
 		ctx.Ctx, ctx.Symbol, side, orderType, price, quantity, leverage, marginType,
-	); err != nil {
+	)
+	if err != nil {
 		return nil, fmt.Errorf("trade_smart_order (block_id=%s, symbol=%s): %w",
 			block.ID, ctx.Symbol, err)
+	}
+
+	// Collect the trade result for downstream persistence (Task 2.8.5).
+	if orderResult != nil {
+		ctx.TradeResults = append(ctx.TradeResults, orderResult)
 	}
 
 	ctx.Logger.Info("trade_smart_order: order placed",
@@ -193,9 +199,15 @@ func executeTradeClosePosition(ctx *ExecutionContext, block *Block) (interface{}
 		return nil, fmt.Errorf("trade_close_position (block_id=%s): TradingProxy is nil — cannot close position", block.ID)
 	}
 
-	if err := ctx.TradingProxy.ClosePosition(ctx.Ctx, ctx.Symbol); err != nil {
+	orderResult, err := ctx.TradingProxy.ClosePosition(ctx.Ctx, ctx.Symbol)
+	if err != nil {
 		return nil, fmt.Errorf("trade_close_position (block_id=%s, symbol=%s): %w",
 			block.ID, ctx.Symbol, err)
+	}
+
+	// Collect the trade result for downstream persistence (Task 2.8.5).
+	if orderResult != nil {
+		ctx.TradeResults = append(ctx.TradeResults, orderResult)
 	}
 
 	ctx.Logger.Info("trade_close_position: close-position order dispatched",

@@ -74,6 +74,10 @@ type TradeRepository interface {
 	// pagination. Used by GET /trades/export to stream the full CSV file.
 	// Applies the same filter AND ordering (executed_at DESC, id DESC) as ListByFilter.
 	ListAllByFilter(ctx context.Context, userID string, filter TradeFilter) ([]domain.TradeRecordRaw, error)
+
+	// Create inserts a new trade_history record into the database.
+	// Used by the bot manager to persist executed trades (Task 2.8.5).
+	Create(ctx context.Context, trade *domain.TradeHistory) error
 }
 
 // ─── Implementation ───────────────────────────────────────────────────────────
@@ -179,4 +183,13 @@ func (r *tradeRepository) ListAllByFilter(
 		return nil, fmt.Errorf("trade_repo: ListAllByFilter: %w", err)
 	}
 	return rows, nil
+}
+
+// Create inserts a new trade_history record into the database.
+// Task 2.8.5 — persists executed trades from the bot engine.
+func (r *tradeRepository) Create(ctx context.Context, trade *domain.TradeHistory) error {
+	if err := r.db.WithContext(ctx).Create(trade).Error; err != nil {
+		return fmt.Errorf("trade_repo: Create: %w", err)
+	}
+	return nil
 }

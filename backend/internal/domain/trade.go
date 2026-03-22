@@ -1,6 +1,26 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/shopspring/decimal"
+)
+
+// OrderResult carries the observable execution details of a completed order.
+// Populated by exchange.BinanceProxy (live) or backtest.simulatedTradingProxy,
+// and passed back through ExecutionContext.TradeResults so that the bot manager
+// can persist them to the trade_history table (Task 2.8.5).
+type OrderResult struct {
+	OrderID     int64
+	Symbol      string
+	Side        string          // "LONG" or "SHORT"
+	Quantity    decimal.Decimal // filled quantity (base asset)
+	Price       decimal.Decimal // average fill price
+	Fee         decimal.Decimal // commission
+	RealizedPnL decimal.Decimal // realized PnL (for close / reduce-only orders)
+	Status      string          // "Filled", "New", etc.
+	Time        time.Time
+}
 
 // TradeHistory maps to the `trade_history` table (Database Schema §8).
 //

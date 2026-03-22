@@ -590,7 +590,7 @@ func (l *BotLogic) StopBot(ctx context.Context, botID, userID string, closePosit
 					_ = cancelErr
 				}
 				// Close the open position with a reduce-only MARKET order.
-				if closeErr := proxy.ClosePosition(ctx, botInstance.Symbol); closeErr != nil {
+				if _, closeErr := proxy.ClosePosition(ctx, botInstance.Symbol); closeErr != nil {
 					// Non-blocking: log and proceed. User can close manually.
 					_ = closeErr
 				}

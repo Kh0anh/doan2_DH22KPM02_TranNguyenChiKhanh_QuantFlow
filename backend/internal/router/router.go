@@ -153,11 +153,16 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 			marketTickerCh := appws.NewMarketTickerChannel(candleRepo, wsManager, slog.Default())
 			go marketTickerCh.StartWatchedSymbols(ctx, cfg.WatchedSymbols)
 
+			// WBS 2.8.5: Trade History APIs — GET /trades (cursor + multi-filter) + GET /trades/export CSV.
+			// tradeRepo is constructed here before BotManager so it can be injected
+			// for trade history persistence (Task 2.8.5).
+			tradeRepo := repository.NewTradeRepository(db)
+
 			// WBS 2.7.1: Initialize Bot Manager and Bot Event Listener (two-phase init)
 			// for Live Trade bot orchestration. Task 2.7.5 wires the CRUD handlers below.
 			varRepo := repository.NewBotLifecycleVarRepository(db)
 			logRepo := repository.NewBotLogRepository(db)
-			botManager := bot.NewBotManager(db, slog.Default(), varRepo, logRepo, wsManager)
+			botManager := bot.NewBotManager(db, slog.Default(), varRepo, logRepo, wsManager, tradeRepo)
 			botListener := bot.NewBotEventListener(ctx, botManager, slog.Default())
 			botManager.SetListener(botListener)
 
@@ -239,9 +244,7 @@ func Setup(ctx context.Context, db *gorm.DB, cfg *config.Config) http.Handler {
 				r.Get("/candles", marketHandler.GetCandles)
 			})
 
-			// TODO(dev): Mount trade history handlers — GET /trades, GET /trades/export (WBS 2.8.5)
-			// WBS 2.8.5: Trade History APIs — GET /trades (cursor + multi-filter) + GET /trades/export CSV.
-			tradeRepo := repository.NewTradeRepository(db)
+			// WBS 2.8.5: Trade History APIs — tradeRepo is already constructed above.
 			tradeLogic := logic.NewTradeLogic(tradeRepo)
 			tradeHandler := handler.NewTradeHandler(tradeLogic)
 			r.Route("/trades", func(r chi.Router) {

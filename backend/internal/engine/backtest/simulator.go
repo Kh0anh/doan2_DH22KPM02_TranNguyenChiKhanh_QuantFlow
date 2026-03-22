@@ -375,9 +375,9 @@ func (p *simulatedTradingProxy) SmartOrder(
 	price, quantity decimal.Decimal,
 	leverage int,
 	marginType string,
-) error {
+) (*domain.OrderResult, error) {
 	if quantity.IsZero() || quantity.IsNegative() {
-		return fmt.Errorf("simulatedTradingProxy: SmartOrder: quantity must be positive, got %s", quantity)
+		return nil, fmt.Errorf("simulatedTradingProxy: SmartOrder: quantity must be positive, got %s", quantity)
 	}
 
 	*p.newOrders = append(*p.newOrders, PendingOrder{
@@ -400,18 +400,19 @@ func (p *simulatedTradingProxy) SmartOrder(
 		Size:       quantity,
 	}
 
-	return nil
+	// Backtest does not persist trade_history — return nil OrderResult.
+	return nil, nil
 }
 
 // ClosePosition submits a reduce-only MARKET order that closes the entire
 // open position. No-op when the current position is flat.
 // After submitting the close order, the provisional position is cleared so
 // subsequent blocks in the same session see a flat position.
-func (p *simulatedTradingProxy) ClosePosition(_ context.Context, _ string) error {
+func (p *simulatedTradingProxy) ClosePosition(_ context.Context, _ string) (*domain.OrderResult, error) {
 	pos := p.state.Position
 	if pos.IsFlat() {
 		// No open position — no-op, matches live-trade behaviour.
-		return nil
+		return nil, nil
 	}
 
 	// The closing order is on the OPPOSITE side to the open position.
@@ -434,7 +435,8 @@ func (p *simulatedTradingProxy) ClosePosition(_ context.Context, _ string) error
 	// Clear provisional position — now flat after close order submitted.
 	p.state.Position = SimulatedPosition{}
 
-	return nil
+	// Backtest does not persist trade_history — return nil OrderResult.
+	return nil, nil
 }
 
 // CancelAllOrders clears all pending orders that were submitted during the

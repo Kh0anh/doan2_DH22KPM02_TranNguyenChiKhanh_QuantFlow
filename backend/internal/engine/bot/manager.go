@@ -201,6 +201,7 @@ type BotManager struct {
 	logger         *slog.Logger
 	lifecycleState *LifecycleStateManager // Task 2.7.3: lifecycle variable persistence
 	botLogger      *BotLogger             // Task 2.7.4: bot session log persistence and WS push
+	tradeRepo      repository.TradeRepository // Task 2.8.5: trade history persistence
 
 	// listener is the BotEventListener that manages Binance kline WS streams.
 	// Wired after construction via SetListener() to break the mutual init cycle:
@@ -235,6 +236,7 @@ func NewBotManager(
 	varRepo repository.BotLifecycleVarRepository,
 	logRepo repository.BotLogRepository,
 	wsPusher BotLogPusher,
+	tradeRepo repository.TradeRepository,
 ) *BotManager {
 	if logger == nil {
 		logger = slog.Default()
@@ -253,6 +255,7 @@ func NewBotManager(
 		logger:         logger,
 		lifecycleState: lifecycleState,
 		botLogger:      botLogger,
+		tradeRepo:      tradeRepo,
 	}
 }
 
@@ -575,6 +578,36 @@ func (m *BotManager) runSession(
 				sessionLogger.Warn("bot: failed to write bot log",
 					slog.String("error", logErr.Error()),
 				)
+			}
+		}
+		// ── Task 2.8.5: Persist trade results to trade_history table ───────
+		if m.tradeRepo != nil && len(result.TradeResults) > 0 {
+			for _, tr := range result.TradeResults {
+				trade := &domain.TradeHistory{
+					UserID:      cfg.UserID,
+					BotID:       cfg.BotID,
+					Symbol:      tr.Symbol,
+					Side:        tr.Side,
+					Quantity:    tr.Quantity.String(),
+					FillPrice:   tr.Price.String(),
+					Fee:         tr.Fee.String(),
+					RealizedPnL: tr.RealizedPnL.String(),
+					Status:      tr.Status,
+					ExecutedAt:  tr.Time,
+				}
+				if saveErr := m.tradeRepo.Create(ctx, trade); saveErr != nil {
+					sessionLogger.Warn("bot: failed to save trade history",
+						slog.String("error", saveErr.Error()),
+						slog.Int64("order_id", tr.OrderID),
+					)
+				} else {
+					sessionLogger.Info("bot: trade saved to trade_history",
+						slog.Int64("order_id", tr.OrderID),
+						slog.String("side", tr.Side),
+						slog.String("quantity", tr.Quantity.String()),
+						slog.String("price", tr.Price.String()),
+					)
+				}
 			}
 		}
 		return

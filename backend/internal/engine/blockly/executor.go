@@ -146,6 +146,9 @@ type TradingProxy interface {
 	// Pre-flight: auto-adjusts Leverage and MarginType on the exchange before
 	// placing the order if they differ from the account's current settings.
 	//
+	// Returns an *OrderResult with fill details (price, quantity, fee) so that
+	// the caller can persist the trade to trade_history (Task 2.8.5).
+	//
 	// Parameters:
 	//   symbol     — trading pair, e.g. "BTCUSDT" (from ExecutionContext.Symbol).
 	//   side       — "LONG" or "SHORT" (blockly.md §3.6.5 SIDE field).
@@ -155,12 +158,13 @@ type TradingProxy interface {
 	//   leverage   — desired leverage multiplier (1–125).
 	//   marginType — "CROSS" or "ISOLATED".
 	SmartOrder(ctx context.Context, symbol, side, orderType string,
-		price, quantity decimal.Decimal, leverage int, marginType string) error
+		price, quantity decimal.Decimal, leverage int, marginType string) (*domain.OrderResult, error)
 
 	// ClosePosition closes the entire open position for the symbol via a
-	// reduce-only MARKET order. No-op (returns nil) when no position is open.
+	// reduce-only MARKET order. No-op (returns (nil, nil)) when no position is open.
+	// Returns an *OrderResult with fill details when a position was closed.
 	// Mapped to trade_close_position.
-	ClosePosition(ctx context.Context, symbol string) error
+	ClosePosition(ctx context.Context, symbol string) (*domain.OrderResult, error)
 
 	// CancelAllOrders cancels every open order for the symbol.
 	// No-op (returns nil) when no open orders exist.
@@ -248,6 +252,12 @@ type ExecutionContext struct {
 	// is nil (safe degradation for unit tests that don't exercise trading blocks).
 	// Trade action blocks (trade_*) return an error when TradingProxy is nil.
 	TradingProxy TradingProxy
+
+	// TradeResults accumulates OrderResult entries produced by trade action
+	// blocks (trade_smart_order, trade_close_position) during the current session.
+	// The bot manager reads this slice after Session.Run() completes and persists
+	// each entry to trade_history (Task 2.8.5).
+	TradeResults []*domain.OrderResult
 }
 
 // NewExecutionContext constructs a fresh ExecutionContext for a new Session.
