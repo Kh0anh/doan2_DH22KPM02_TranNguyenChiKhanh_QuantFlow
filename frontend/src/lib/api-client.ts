@@ -86,13 +86,11 @@ interface GetStrategyResponse {
   data: {
     id: string;
     name: string;
-    description?: string;
     status: string;
     logic_json: Record<string, unknown>;
-    version_number: number;
+    version: number;
     active_bot_ids?: string[];
     warning?: string;
-    bots_using: number;
     created_at: string;
     updated_at: string;
   };
@@ -105,9 +103,8 @@ interface CreateStrategyResponse {
     id: string;
     name: string;
     status: string;
-    version_number: number;
+    version: number;
     created_at: string;
-    updated_at: string;
   };
 }
 
@@ -118,7 +115,7 @@ interface UpdateStrategyResponse {
     id: string;
     name: string;
     status: string;
-    version_number: number;
+    version: number;
     warning?: string;
     updated_at: string;
   };
