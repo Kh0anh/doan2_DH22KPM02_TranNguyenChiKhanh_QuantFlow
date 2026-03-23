@@ -497,11 +497,9 @@ function ExchangeTab() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="secret-key" className="text-sm">
+          <Label htmlFor="secret-key" className="text-sm whitespace-nowrap">
             Secret Key
-            <span className="ml-1.5 text-[10px] text-muted-foreground">(Write-only — không được lưu lại trên trình duyệt)</span>
           </Label>
-          {/* Secret Key is write-only: type="password", no eye toggle, no autocomplete */}
           <Input
             id="secret-key"
             type="password"
@@ -593,7 +591,7 @@ export function SettingsDialog() {
 
   return (
     <Dialog open={settingsOpen} onOpenChange={(open) => !open && closeSettings()}>
-      <DialogContent className="flex min-h-[480px] max-h-[90vh] w-full max-w-[640px] flex-col gap-0 overflow-hidden p-0">
+      <DialogContent className="flex min-h-[480px] max-h-[90vh] w-full max-w-[640px] sm:max-w-[640px] flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="shrink-0 border-b border-border px-6 py-4">
           <DialogTitle className="text-base font-semibold">Cài đặt</DialogTitle>
         </DialogHeader>
