@@ -186,3 +186,8 @@ html {
 .blocklyTreeRowContentContainer {
   font-family: 'JetBrains Mono', monospace !important;
 }
+
+/* Fix Blockly inline field editor text color — dark gray on light field bg */
+.blocklyHtmlInput {
+  color: #1F2937 !important;
+}
