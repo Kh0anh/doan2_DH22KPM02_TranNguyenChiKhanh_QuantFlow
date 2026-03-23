@@ -1,70 +1,72 @@
-# QuantFlow - Low-code Crypto Trading Platform
+# QuantFlow - Nền tảng Low-code Giao dịch Tự động
 
-![Project Status](https://img.shields.io/badge/Status-Developing-orange)
-![Field](https://img.shields.io/badge/Field-Software_Engineering-blue)
-![University](https://img.shields.io/badge/University-Nam_Can_Tho_University-green)
+![Trạng thái](https://img.shields.io/badge/Trạng_thái-Đang_phát_triển-orange)
+![Lĩnh vực](https://img.shields.io/badge/Lĩnh_vực-Kỹ_thuật_Phần_mềm-blue)
+![Trường](https://img.shields.io/badge/Trường-ĐH_Nam_Cần_Thơ-green)
+![License](https://img.shields.io/badge/License-GPL_v3-red)
 
-## 📌 Giới thiệu đề tài
-**QuantFlow** là đồ án chuyên ngành Kỹ thuật phần mềm, tập trung vào việc giải quyết rào cản kỹ thuật cho người dùng cá nhân trong thị trường tiền mã hóa. Hệ thống cung cấp một nền tảng lập trình trực quan giúp xây dựng và vận hành bot giao dịch tự động trên các sàn giao dịch tập trung (CEX) mà không yêu cầu kỹ năng lập trình chuyên sâu.
+## Giới thiệu
 
-* **Tên đề tài:** Phát triển nền tảng Low-code hỗ trợ xây dựng và vận hành chiến lược giao dịch tiền mã hóa trên sàn giao dịch tập trung (CEX)
-* **Sản phẩm:** QuantFlow
-* **Sinh viên thực hiện:** Trần Nguyễn Chí Khanh
-* **MSSV:** 220979
-* **Đơn vị:** Trường Đại học Nam Cần Thơ
-* **Thời gian thực hiện:** 12/01/2026 – 23/03/2026
+**QuantFlow** là đồ án chuyên ngành Kỹ thuật Phần mềm, tập trung vào việc giải quyết rào cản kỹ thuật cho người dùng cá nhân trong thị trường tiền mã hóa. Hệ thống cung cấp một nền tảng lập trình trực quan giúp xây dựng và vận hành bot giao dịch tự động trên các sàn giao dịch tập trung (CEX) mà không yêu cầu kỹ năng lập trình chuyên sâu.
 
----
-
-## 🚀 Phạm vi và Chức năng hệ thống
-
-### 1. Tổng quan sản phẩm
-**QuantFlow** là một ứng dụng web cung cấp môi trường Low-code/No-code để người dùng tự cấu hình bot giao dịch tự động.
-
-### 2. Các chức năng chính (In-scope)
-* **Quản trị & Cấu hình:**
-    * Hệ thống hỗ trợ mô hình đơn người dùng (Single User/Admin)
-    * Quản lý thông tin cá nhân: Đăng nhập, đổi tên và mật khẩu
-    * Quản lý an toàn API Key/Secret Key kết nối với sàn giao dịch
-* **Xây dựng chiến lược (Strategy Builder):**
-    * Giao diện kéo thả trực quan sử dụng thư viện **Google Blockly**
-    * Cung cấp bộ khối logic: Điều kiện (If/Else), Vòng lặp, Toán học, Hàm chỉ báo và các khối giao dịch (Mua/Bán/Hủy lệnh)
-    * Khả năng chuyển đổi tự động từ sơ đồ khối sang mã thực thi (Code Generation)
-* **Vận hành & Giám sát:**
-    * Khởi chạy và dừng bot linh hoạt theo yêu cầu
-    * Hiển thị nhật ký (Logs) và trạng thái lệnh Real-time
-* **Kết nối thị trường:**
-    * Lấy dữ liệu giá thị trường (Market Data) từ sàn CEX
-    * Gửi lệnh giao dịch (Order Placement) qua API của sàn
+| Thông tin | Chi tiết |
+|-----------|----------|
+| **Tên đề tài** | Phát triển nền tảng Low-code hỗ trợ xây dựng và vận hành chiến lược giao dịch tiền mã hóa trên sàn giao dịch tập trung (CEX) |
+| **Sản phẩm** | QuantFlow |
+| **Sinh viên** | Trần Nguyễn Chí Khanh |
+| **MSSV** | 220979 |
+| **Đơn vị** | Trường Đại học Nam Cần Thơ |
+| **Thời gian** | 12/01/2026 – 23/03/2026 |
 
 ---
 
-## 🛠 Công nghệ sử dụng
-Hệ thống được phát triển dựa trên các công nghệ hiện đại nhằm đảm bảo tính ổn định và thời gian thực:
+## Chức năng chính
 
-* **Backend:** Golang 1.24 (GORM + pgx, gorilla/websocket)
-* **Frontend:** Next.js 16 (React 19, TypeScript, Tailwind CSS, shadcn/ui)
-* **Database:** PostgreSQL 16
-* **Reverse Proxy:** Nginx 1.26
-* **Containerization:** Docker & Docker Compose
-* **Block-based Editor:** Google Blockly
+### Quản trị và Cấu hình
+- Hệ thống hỗ trợ mô hình đơn người dùng (Single User/Admin)
+- Quản lý thông tin cá nhân: Đăng nhập, đổi tên và mật khẩu
+- Quản lý an toàn API Key/Secret Key kết nối với sàn giao dịch
+
+### Xây dựng Chiến lược (Strategy Builder)
+- Giao diện kéo thả trực quan sử dụng thư viện **Google Blockly**
+- Bộ khối logic: Điều kiện (If/Else), Vòng lặp, Toán học, Hàm chỉ báo và các khối giao dịch (Mua/Bán/Hủy lệnh)
+- Chuyển đổi tự động từ sơ đồ khối sang mã thực thi (Code Generation)
+
+### Vận hành và Giám sát
+- Khởi chạy và dừng bot linh hoạt theo yêu cầu
+- Hiển thị nhật ký (Logs) và trạng thái lệnh Real-time
+
+### Kết nối Thị trường
+- Lấy dữ liệu giá thị trường (Market Data) từ sàn CEX
+- Gửi lệnh giao dịch (Order Placement) qua API của sàn
 
 ---
 
-## 🐳 Cài đặt và Chạy Hệ thống (Docker)
+## Công nghệ sử dụng
 
-### Yêu cầu hệ thống (Prerequisites)
+| Thành phần | Công nghệ |
+|------------|-----------|
+| **Backend** | Golang 1.25 (GORM + pgx, gorilla/websocket) |
+| **Frontend** | Next.js 16 (React 19, TypeScript, Tailwind CSS v4, shadcn/ui) |
+| **Cơ sở dữ liệu** | PostgreSQL 16 |
+| **Reverse Proxy** | Nginx 1.26 |
+| **Container** | Docker & Docker Compose |
+| **Trình soạn khối** | Google Blockly v12 |
 
-Đảm bảo máy tính của bạn đã cài đặt các công cụ sau:
+---
 
-| Công cụ | Phiên bản tối thiểu | Kiểm tra phiên bản |
-|---------|---------------------|-------------------|
+## Cài đặt và Chạy Hệ thống
+
+### Yêu cầu hệ thống
+
+| Công cụ | Phiên bản tối thiểu | Kiểm tra |
+|---------|---------------------|----------|
 | **Docker Engine** | 24.0+ | `docker --version` |
 | **Docker Compose** | 2.20+ | `docker compose version` |
 | **Git** | 2.30+ | `git --version` |
 
-> **Chú ý:** Đối với Windows, khuyến nghị cài đặt **Docker Desktop**  
-> Đối với Linux, cài đặt Docker Engine + Docker Compose plugin
+> **Lưu ý:** Đối với Windows, khuyến nghị cài đặt **Docker Desktop**.
+> Đối với Linux, cài đặt Docker Engine + Docker Compose plugin.
 
 ### Bước 1: Clone Repository
 
@@ -73,123 +75,75 @@ git clone https://github.com/Kh0anh/doan2_DH22KPM02_TranNguyenChiKhanh_QuantFlow
 cd doan2_DH22KPM02_TranNguyenChiKhanh_QuantFlow
 ```
 
-### Bước 2: Cấu hình Environment Variables
+### Bước 2: Cấu hình Môi trường
 
 ```bash
-# Sao chép file template
+# Sao chép file mẫu (không cần chỉnh sửa gì cho development)
 cp .env.example .env
-
-# Chỉnh sửa file .env với editor yêu thích
-nano .env   # hoặc: vi .env, code .env, notepad .env
 ```
 
-**⚠️ QUAN TRỌNG:** Thay đổi các giá trị sau trong file `.env`:
+> File `.env.example` đã có sẵn giá trị mặc định, sẵn sàng chạy ngay.
+> Nếu muốn tùy chỉnh, mở file `.env` và thay đổi giá trị tương ứng.
 
-```env
-# Đổi mật khẩu database
-POSTGRES_PASSWORD=your_strong_password_here
-
-# Tạo JWT Secret (tối thiểu 32 ký tự)
-JWT_SECRET=$(openssl rand -base64 32)
-
-# Tạo AES Key (chính xác 32 bytes)
-AES_KEY=$(openssl rand -hex 32)
-```
-
-### Bước 3: Tạo SSL Certificate (Development)
+### Bước 3: Khởi động
 
 ```bash
-# Cấp quyền thực thi cho script
-chmod +x scripts/generate-ssl.sh
-
-# Chạy script tạo self-signed certificate
-./scripts/generate-ssl.sh
-```
-
-> **Lưu ý:** Chỉ cần làm một lần. Certificate có hiệu lực 365 ngày.  
-> Production: Sử dụng Let's Encrypt certificate thay vì self-signed.
-
-### Bước 4: Khởi động Stack
-
-#### Development Mode (với hot reload)
-
-```bash
-# Khởi động tất cả services
-docker compose up
-
-# Hoặc chạy ngầm (detached mode)
+# Khởi động tất cả dịch vụ
 docker compose up -d
 
 # Xem logs
 docker compose logs -f
-
-# Xem logs của service cụ thể
-docker compose logs -f backend
-docker compose logs -f frontend
 ```
 
-#### Production Mode
+> Chứng chỉ SSL sẽ được **tự động tạo** khi khởi động lần đầu.
+> Lần đầu chạy có thể mất 5-10 phút để tải image và cài đặt.
 
-```bash
-# Build và chạy production stack
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+### Bước 4: Truy cập Hệ thống
 
-# Kiểm tra trạng thái
-docker compose ps
-```
-
-### Bước 5: Truy cập Hệ thống
-
-Sau khi khởi động thành công, truy cập các endpoint sau:
-
-| Service | URL | Mô tả |
-|---------|-----|-------|
-| **Frontend** | http://localhost | Giao diện người dùng |
+| Dịch vụ | Địa chỉ | Mô tả |
+|---------|---------|-------|
+| **Giao diện** | http://localhost | Trang web chính |
 | **Backend API** | http://localhost/api/v1 | RESTful API |
-| **WebSocket** | ws://localhost/ws | Real-time connection |
-| **PostgreSQL** | localhost:5432 | Database (chỉ development) |
+| **WebSocket** | ws://localhost/ws | Kết nối thời gian thực |
+| **Cơ sở dữ liệu** | localhost:5432 | PostgreSQL |
 
-**Thông tin đăng nhập mặc định:**
-- Username: `admin`
-- Password: `Admin@2026`
+**Tài khoản mặc định:**
+- Tên đăng nhập: `admin`
+- Mật khẩu: `123456`
 
-> **⚠️ BẢO MẬT:** Đổi mật khẩu ngay sau lần đăng nhập đầu tiên!
+> **BẢO MẬT:** Hãy đổi mật khẩu ngay sau lần đăng nhập đầu tiên!
 
-### Các lệnh Docker Compose hữu ích
+---
+
+## Các lệnh thường dùng
 
 ```bash
-# Dừng tất cả services (giữ nguyên data)
+# Dừng tất cả dịch vụ (giữ nguyên dữ liệu)
 docker compose stop
 
-# Khởi động lại services đã dừng
-docker compose start
+# Khởi động lại
+docker compose restart
 
-# Dừng và xóa containers (giữ nguyên volumes)
+# Dừng và xóa container (giữ nguyên dữ liệu)
 docker compose down
 
-# Dừng và xóa containers + volumes (XÓA TOÀN BỘ DỮ LIỆU!)
+# Dừng và xóa container + dữ liệu (XÓA TOÀN BỘ!)
 docker compose down -v
 
-# Xem trạng thái services
+# Xem trạng thái
 docker compose ps
 
-# Rebuild images (sau khi sửa code)
-docker compose up --build
-
-# Chạy lệnh trong container đang chạy
-docker compose exec backend sh
-docker compose exec postgres psql -U quantflow_user -d quantflow_db
-
-# Xem resource usage
-docker stats
+# Rebuild (sau khi sửa code)
+docker compose up --build -d
 ```
 
-### Troubleshooting (Xử lý lỗi thường gặp)
+---
 
-#### 1. Port already in use (Cổng đã bị chiếm)
+## Xử lý Lỗi Thường Gặp
+
+### 1. Cổng đã bị chiếm (Port already in use)
 
 ```bash
-# Kiểm tra port nào đang sử dụng
 # Windows
 netstat -ano | findstr :80
 netstat -ano | findstr :5432
@@ -197,79 +151,91 @@ netstat -ano | findstr :5432
 # Linux/Mac
 lsof -i :80
 lsof -i :5432
-
-# Giải pháp: Thay đổi port trong docker-compose.yml
-# Hoặc dừng service đang chiếm port
 ```
 
-#### 2. Backend không kết nối được Database
+### 2. Backend không kết nối được Database
 
 ```bash
-# Kiểm tra PostgreSQL đã ready chưa
+# Kiểm tra PostgreSQL đã sẵn sàng chưa
 docker compose logs postgres
 
-# Khởi động lại backend sau khi postgres ready
+# Khởi động lại backend
 docker compose restart backend
 ```
 
-#### 3. Permission denied khi mount volumes (Linux)
+### 3. Frontend không load được (404)
 
 ```bash
-# Thêm user ID vào docker-compose.yml
-user: "${UID}:${GID}"
-
-# Hoặc chạy với sudo (không khuyến nghị)
-sudo docker compose up
-```
-
-#### 4. Frontend không load được (404 Not Found)
-
-```bash
-# Clear Next.js cache và rebuild
+# Xóa cache và rebuild
 docker compose exec frontend rm -rf .next
 docker compose restart frontend
 ```
 
-#### 5. SSL Certificate error
+### 4. Lỗi Chứng chỉ SSL
 
 ```bash
-# Tạo lại certificate
+# Xóa và tạo lại (tự động tạo khi restart nginx)
 rm -rf nginx/ssl/*
-./scripts/generate-ssl.sh
 docker compose restart nginx
 ```
 
-### Database Management
+---
 
-#### Backup Database
+## Quản lý Cơ sở Dữ liệu
 
-```bash
-# Tạo backup file
-docker compose exec postgres pg_dump -U quantflow_user quantflow_db > backup.sql
-
-# Hoặc với format custom (nén)
-docker compose exec postgres pg_dump -U quantflow_user -Fc quantflow_db > backup.dump
-```
-
-#### Restore Database
+### Sao lưu (Backup)
 
 ```bash
-# Restore từ SQL file
-docker compose exec -T postgres psql -U quantflow_user quantflow_db < backup.sql
-
-# Restore từ custom format
-docker compose exec postgres pg_restore -U quantflow_user -d quantflow_db backup.dump
+# Xuất file SQL
+docker compose exec postgres pg_dump -U postgres postgres > backup.sql
 ```
 
-#### Kết nối trực tiếp database bằng client (DBeaver, pgAdmin)
+### Phục hồi (Restore)
+
+```bash
+# Nhập từ file SQL
+docker compose exec -T postgres psql -U postgres postgres < backup.sql
+```
+
+### Kết nối bằng Client (DBeaver, pgAdmin)
 
 ```
-Host: localhost
-Port: 5432
-Database: quantflow_db
-Username: quantflow_user
-Password: <giá trị trong .env>
+Host:     localhost
+Port:     5432
+Database: postgres
+Username: postgres
+Password: 123 (hoặc giá trị trong file .env)
 ```
 
 ---
-*Copyright © 2026 Khanh. Licensed under the GNU GPL v3.*
+
+## Cấu trúc Dự án
+
+```
+QuantFlow/
+├── backend/          # Go API Server
+│   ├── cmd/          # Điểm khởi động (main.go)
+│   ├── config/       # Cấu hình ứng dụng
+│   ├── internal/     # Logic nghiệp vụ
+│   │   ├── engine/   # Bot engine & Blockly interpreter
+│   │   ├── handler/  # HTTP & WebSocket handlers
+│   │   ├── logic/    # Business logic
+│   │   ├── model/    # Database models
+│   │   └── repository/ # Data access layer
+│   └── go.mod
+├── frontend/         # Next.js Frontend
+│   ├── src/
+│   │   ├── app/      # App Router pages
+│   │   ├── components/  # React components
+│   │   ├── lib/      # Hooks, API client, utilities
+│   │   └── store/    # Zustand state management
+│   └── package.json
+├── nginx/            # Reverse Proxy config
+├── scripts/          # Scripts tiện ích
+├── docs/             # Tài liệu dự án
+├── docker-compose.yml
+├── .env.example      # Mẫu cấu hình môi trường
+└── README.md
+```
+
+*Copyright (c) 2026 Trần Nguyễn Chí Khanh. Licensed under GNU GPL v3.*
