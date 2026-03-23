@@ -376,7 +376,7 @@ export interface BotSummaryResponse {
   strategy_version: number;
   symbol: string;
   status: "Running" | "Stopped" | "Error";
-  total_pnl: number;
+  total_pnl: string; // decimal(18,8) serialized as string by backend
   created_at: string;
   updated_at: string;
 }

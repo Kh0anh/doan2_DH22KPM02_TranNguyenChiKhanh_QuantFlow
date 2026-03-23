@@ -35,7 +35,7 @@ type Config struct {
 	WatchedSymbols []string
 
 	// Exchange
-	BinanceBaseURL string // BINANCE_BASE_URL — override Binance Futures REST base URL (testnet/proxy)
+	BinanceBaseURL string // BINANCE_API_BASE — override Binance Futures REST base URL (testnet/proxy)
 
 	// Logging
 	LogLevel string // LOG_LEVEL env var: debug | info | warn | error (default: info)
@@ -66,7 +66,7 @@ func Load() *Config {
 
 		LogLevel: getEnv("LOG_LEVEL", "info"),
 
-		BinanceBaseURL: getEnv("BINANCE_BASE_URL", ""), // empty = use go-binance library default
+		BinanceBaseURL: getEnv("BINANCE_API_BASE", ""), // empty = use go-binance library default
 	}
 
 	rawOrigins := getEnv("CORS_ALLOWED_ORIGINS", "http://localhost,http://localhost:3000")

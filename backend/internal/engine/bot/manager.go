@@ -555,22 +555,23 @@ func (m *BotManager) runSession(
 	session := NewSession(sessionCfg, sessionLogger)
 	result, err := session.Run(ctx)
 
+	// ── Task 2.7.3: Persist lifecycle vars for any non-cancellation outcome ──
+	// Even when the session returns a non-fatal error (e.g. ErrUnitCostExceeded),
+	// the lifecycle variables mutated before the error should be durably committed.
+	// Only context cancellation (bot stopping) skips persistence — the bot will
+	// reload the last committed snapshot on restart.
+	if m.lifecycleState != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		if persistErr := m.lifecycleState.Persist(ctx, cfg.BotID, result.UpdatedLifecycleVars); persistErr != nil {
+			sessionLogger.Warn("bot: failed to persist lifecycle vars",
+				slog.String("error", persistErr.Error()),
+			)
+		}
+	}
+
 	if err == nil {
 		sessionLogger.Info("bot: session completed",
 			slog.Int("units_used", result.UnitsUsed),
 		)
-		// ── Task 2.7.3: Persist updated lifecycle vars to DB ─────────────
-		if m.lifecycleState != nil {
-			if persistErr := m.lifecycleState.Persist(ctx, cfg.BotID, result.UpdatedLifecycleVars); persistErr != nil {
-				// Non-fatal: the bot continues Running. In-RAM state is still
-				// correct for the current goroutine's lifetime; the next successful
-				// session will overwrite the stale DB rows.
-				sessionLogger.Warn("bot: failed to persist lifecycle vars — in-RAM state preserved",
-					slog.String("error", persistErr.Error()),
-					slog.Int("units_used", result.UnitsUsed),
-				)
-			}
-		}
 		// ── Task 2.7.4: Write bot_log to DB and push WS event ────────────
 		if m.botLogger != nil {
 			logMsg := fmt.Sprintf("Session completed: %d units consumed", result.UnitsUsed)

@@ -71,11 +71,13 @@ type BotCreated struct {
 	ID              string `json:"id"`
 	BotName         string `json:"bot_name"`
 	StrategyID      string `json:"strategy_id"`
+	StrategyName    string `json:"strategy_name"`
 	StrategyVersion int    `json:"strategy_version"`
 	Symbol          string `json:"symbol"`
 	Status          string `json:"status"`
 	TotalPnL        string `json:"total_pnl"`
-	CreatedAt       string `json:"created_at"` // ISO8601 timestamp
+	CreatedAt       string `json:"created_at"`  // ISO8601 timestamp
+	UpdatedAt       string `json:"updated_at"` // ISO8601 timestamp
 }
 
 // BotLogic orchestrates bot lifecycle business rules (WBS 2.7.5).
@@ -234,11 +236,13 @@ func (l *BotLogic) CreateBot(ctx context.Context, userID string, input CreateBot
 		ID:              botInstance.ID,
 		BotName:         botInstance.BotName,
 		StrategyID:      input.StrategyID,
+		StrategyName:    strategyDetail.Name,
 		StrategyVersion: strategyDetail.Version,
 		Symbol:          input.Symbol,
 		Status:          domain.BotStatusRunning,
 		TotalPnL:        "0",
 		CreatedAt:       botInstance.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:       botInstance.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}, nil
 }
 
@@ -288,10 +292,14 @@ func (l *BotLogic) populateBinancePosition(ctx context.Context, detail *domain.B
 	// ── Fetch position risk ──────────────────────────────────────────────
 	risks, err := proxy.GetPositionRisk(ctx, symbol)
 	if err == nil {
+		var livePnL float64
 		for _, r := range risks {
 			if r.Symbol != symbol {
 				continue
 			}
+			unrealizedPnl, _ := strconv.ParseFloat(r.UnRealizedProfit, 64)
+			livePnL += unrealizedPnl
+
 			posAmt, _ := strconv.ParseFloat(r.PositionAmt, 64)
 			if posAmt == 0 {
 				continue // no open position
@@ -303,7 +311,6 @@ func (l *BotLogic) populateBinancePosition(ctx context.Context, detail *domain.B
 				posAmt = -posAmt // absolute for display
 			}
 			entryPrice, _ := strconv.ParseFloat(r.EntryPrice, 64)
-			unrealizedPnl, _ := strconv.ParseFloat(r.UnRealizedProfit, 64)
 			leverage, _ := strconv.Atoi(r.Leverage)
 			marginType := r.MarginType // "isolated" or "cross"
 			if marginType == "isolated" {
@@ -322,6 +329,8 @@ func (l *BotLogic) populateBinancePosition(ctx context.Context, detail *domain.B
 			}
 			break
 		}
+		// Set total_pnl to live unrealized PnL from Binance positions.
+		detail.TotalPnL = strconv.FormatFloat(livePnL, 'f', 8, 64)
 	}
 
 	// ── Fetch open orders ────────────────────────────────────────────────
