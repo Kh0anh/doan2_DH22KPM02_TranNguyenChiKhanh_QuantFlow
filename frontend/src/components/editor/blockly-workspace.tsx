@@ -119,6 +119,15 @@ export default function BlocklyWorkspace({
     const workspace = Blockly.inject(containerRef.current, INJECT_OPTIONS);
     workspaceRef.current = workspace;
 
+    // ── Disable flyout auto-close when clicking the workspace ─────────
+    const toolbox = workspace.getToolbox();
+    if (toolbox) {
+      const flyout = toolbox.getFlyout();
+      if (flyout) {
+        flyout.autoClose = false;
+      }
+    }
+
     // ── Dirty tracking ────────────────────────────────────────────────
     const changeHandler = (event: Blockly.Events.Abstract) => {
       // Ignore purely visual events (scroll, zoom, select, click)
