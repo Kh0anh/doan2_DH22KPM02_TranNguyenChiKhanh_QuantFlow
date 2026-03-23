@@ -292,10 +292,14 @@ func (l *BotLogic) populateBinancePosition(ctx context.Context, detail *domain.B
 	// ── Fetch position risk ──────────────────────────────────────────────
 	risks, err := proxy.GetPositionRisk(ctx, symbol)
 	if err == nil {
+		var livePnL float64
 		for _, r := range risks {
 			if r.Symbol != symbol {
 				continue
 			}
+			unrealizedPnl, _ := strconv.ParseFloat(r.UnRealizedProfit, 64)
+			livePnL += unrealizedPnl
+
 			posAmt, _ := strconv.ParseFloat(r.PositionAmt, 64)
 			if posAmt == 0 {
 				continue // no open position
@@ -307,7 +311,6 @@ func (l *BotLogic) populateBinancePosition(ctx context.Context, detail *domain.B
 				posAmt = -posAmt // absolute for display
 			}
 			entryPrice, _ := strconv.ParseFloat(r.EntryPrice, 64)
-			unrealizedPnl, _ := strconv.ParseFloat(r.UnRealizedProfit, 64)
 			leverage, _ := strconv.Atoi(r.Leverage)
 			marginType := r.MarginType // "isolated" or "cross"
 			if marginType == "isolated" {
@@ -326,6 +329,8 @@ func (l *BotLogic) populateBinancePosition(ctx context.Context, detail *domain.B
 			}
 			break
 		}
+		// Set total_pnl to live unrealized PnL from Binance positions.
+		detail.TotalPnL = strconv.FormatFloat(livePnL, 'f', 8, 64)
 	}
 
 	// ── Fetch open orders ────────────────────────────────────────────────

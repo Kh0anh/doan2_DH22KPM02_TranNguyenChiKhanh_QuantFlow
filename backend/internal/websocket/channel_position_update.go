@@ -328,6 +328,7 @@ func (ch *PositionUpdateChannel) fetchAndPush(ctx context.Context) {
 func (ch *PositionUpdateChannel) buildPayloadForBot(ctx context.Context, snap BotSnapshot, timestamp string) ([]byte, error) {
 	var pos *positionPayload
 	var orders []openOrderPayload
+	totalPnL := snap.TotalPnL // default: DB value
 
 	if snap.Proxy != nil {
 		// ── Fetch position risk ──────────────────────────────────────────────
@@ -336,6 +337,19 @@ func (ch *PositionUpdateChannel) buildPayloadForBot(ctx context.Context, snap Bo
 			return nil, posErr
 		}
 		pos = buildPositionPayload(risks, snap.Symbol)
+
+		// ── Compute live total_pnl from unrealized PnL of all positions ─────
+		// Sum unrealized PnL across all position risk entries for this symbol
+		// so that total_pnl tracks live market value, not stale DB data.
+		var livePnL float64
+		for _, r := range risks {
+			if r.Symbol != snap.Symbol {
+				continue
+			}
+			pnl, _ := strconv.ParseFloat(r.UnRealizedProfit, 64)
+			livePnL += pnl
+		}
+		totalPnL = strconv.FormatFloat(livePnL, 'f', 8, 64)
 
 		// ── Fetch open orders ────────────────────────────────────────────────
 		rawOrders, ordErr := snap.Proxy.GetOpenOrders(ctx, snap.Symbol)
@@ -355,7 +369,7 @@ func (ch *PositionUpdateChannel) buildPayloadForBot(ctx context.Context, snap Bo
 			BotName:    snap.BotName,
 			Symbol:     snap.Symbol,
 			Status:     snap.Status,
-			TotalPnL:   snap.TotalPnL,
+			TotalPnL:   totalPnL,
 			Position:   pos,
 			OpenOrders: orders,
 			Timestamp:  timestamp,
