@@ -1,37 +1,38 @@
 # ============================================================
-# Docker Compose Configuration for QuantFlow (Development)
+# Docker Compose - QuantFlow (Môi trường phát triển)
 # ============================================================
-# Author: Khanh
-# Date: March 7, 2026
-# Version: 1.0
-# Description: Development environment orchestration
-#              4 services: PostgreSQL, Go Backend, Next.js Frontend, Nginx
-
-version: '3.9'
+# Tác giả: Khanh
+# Dự án:   QuantFlow
+# Mô tả:   Điều phối 4 dịch vụ: PostgreSQL, Go Backend, Next.js Frontend, Nginx
+#
+# Khởi động:
+#   cp .env.example .env
+#   docker compose up -d
+# ============================================================
 
 services:
-  # ===========================
-  # PostgreSQL Database Service
-  # ===========================
+  # =====================================================
+  # CƠ SỞ DỮ LIỆU - PostgreSQL
+  # =====================================================
   postgres:
     image: postgres:16-alpine
     container_name: quantflow-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-quantflow_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quantflow_secure_password_2026}
-      POSTGRES_DB: ${POSTGRES_DB:-quantflow_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-123}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
     volumes:
       - quantflow-postgres-data:/var/lib/postgresql/data
       - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
       - ./docs/database/schema.sql:/tmp/schema.sql:ro
     ports:
-      - "5432:5432"  # Exposed for local DB client access (remove in production)
+      - "5432:5432"  # Mở cho truy cập DB cục bộ (bỏ khi production)
     networks:
       - quantflow-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-quantflow_user} -d ${POSTGRES_DB:-quantflow_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -42,11 +43,11 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # ===========================
-  # Go Backend Service
-  # ===========================
+  # =====================================================
+  # BACKEND - Go API Server
+  # =====================================================
   backend:
-    image: golang:1.26.1-alpine
+    image: golang:1.25-alpine
     container_name: quantflow-backend
     restart: unless-stopped
     working_dir: /app
@@ -55,13 +56,13 @@ services:
       GO_ENV: ${GO_ENV:-development}
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: ${POSTGRES_USER:-quantflow_user}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-quantflow_secure_password_2026}
-      DB_NAME: ${POSTGRES_DB:-quantflow_db}
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-123}
+      DB_NAME: ${POSTGRES_DB:-postgres}
       DB_SSLMODE: disable
-      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_key_min_32_chars_development_only}
-      AES_KEY: ${AES_KEY:-your_aes_256_key_32_bytes_exactly}
-      BINANCE_API_BASE: ${BINANCE_API_BASE:-https://fapi.binance.com}
+      JWT_SECRET: ${JWT_SECRET:-081f0a7bd0b61ecbe1e1ed68a99b3e01f6ecee328999d059b81fe60817eba6a3}
+      AES_KEY: ${AES_KEY:-53e17d6c41f81ad01897c18032d4f5f7!!}
+      BINANCE_API_BASE: ${BINANCE_API_BASE:-https://demo-fapi.binance.com}
       SERVER_PORT: 8080
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://localhost:3000}
       WATCHED_SYMBOLS: ${WATCHED_SYMBOLS:-BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT}
@@ -69,7 +70,7 @@ services:
       - ./backend:/app
       - go-mod-cache:/go/pkg/mod
     ports:
-      - "8080:8080"  # Exposed for direct API access (proxied via nginx)
+      - "8080:8080"  # Mở cho truy cập API trực tiếp (proxy qua Nginx)
     networks:
       - quantflow-network
     depends_on:
@@ -87,9 +88,9 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # ===========================
-  # Next.js Frontend Service
-  # ===========================
+  # =====================================================
+  # FRONTEND - Next.js
+  # =====================================================
   frontend:
     image: node:22-alpine
     container_name: quantflow-frontend
@@ -106,7 +107,7 @@ services:
       - node-modules-cache:/app/node_modules
       - nextjs-cache:/app/.next
     ports:
-      - "3000:3000"  # Exposed for direct access (proxied via nginx)
+      - "3000:3000"  # Mở cho truy cập trực tiếp (proxy qua Nginx)
     networks:
       - quantflow-network
     depends_on:
@@ -123,17 +124,31 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # ===========================
-  # Nginx Reverse Proxy Service
-  # ===========================
+  # =====================================================
+  # NGINX - Reverse Proxy
+  # =====================================================
   nginx:
     image: nginx:1.26-alpine
     container_name: quantflow-nginx
     restart: unless-stopped
+    # Tu dong tao chung chi SSL tu ky neu chua co
+    entrypoint: /bin/sh -c "
+      if [ ! -f /etc/nginx/ssl/server.crt ]; then
+        echo '[QuantFlow] Dang tao chung chi SSL tu ky...';
+        apk add --no-cache openssl > /dev/null 2>&1;
+        mkdir -p /etc/nginx/ssl;
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048
+          -keyout /etc/nginx/ssl/server.key
+          -out /etc/nginx/ssl/server.crt
+          -subj '/C=VN/ST=CanTho/L=CanTho/O=QuantFlow/OU=Dev/CN=localhost' 2>/dev/null;
+        echo '[QuantFlow] Chung chi SSL da duoc tao thanh cong!';
+      fi;
+      exec nginx -g 'daemon off;'
+      "
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/ssl:/etc/nginx/ssl
       - nginx-cache:/var/cache/nginx
     ports:
       - "80:80"    # HTTP
@@ -155,9 +170,9 @@ services:
         max-size: "10m"
         max-file: "3"
 
-# ===========================
-# Networks
-# ===========================
+# =====================================================
+# MANG (Networks)
+# =====================================================
 networks:
   quantflow-network:
     driver: bridge
@@ -166,9 +181,9 @@ networks:
       config:
         - subnet: 172.25.0.0/16
 
-# ===========================
-# Volumes
-# ===========================
+# =====================================================
+# O DIA (Volumes)
+# =====================================================
 volumes:
   quantflow-postgres-data:
     driver: local

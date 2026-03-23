@@ -1,17 +1,15 @@
 #!/bin/bash
 # ============================================================
-# SSL Certificate Generator for QuantFlow (Development)
+# QuantFlow - Tạo Chứng chỉ SSL (Phát triển)
 # ============================================================
-# Author: Khanh
-# Date: March 7, 2026
-# Project: QuantFlow
-# Description: Generate self-signed SSL certificate for local HTTPS testing
+# Tác giả: Khanh
+# Mô tả:   Tạo chứng chỉ SSL tự ký cho HTTPS cục bộ
 #
-# Usage: 
-# chmod +x scripts/generate-ssl.sh
-# ./scripts/generate-ssl.sh
+# Sử dụng:
+#   chmod +x scripts/generate-ssl.sh
+#   ./scripts/generate-ssl.sh
 #
-# Note: For production, use Let's Encrypt certificates instead
+# Lưu ý: Khi lên production, sử dụng Let's Encrypt thay thế
 # ============================================================
 
 set -e
@@ -20,30 +18,30 @@ CERT_DIR="./nginx/ssl"
 DAYS_VALID=365
 
 echo "========================================="
-echo "SSL Certificate Generator (Development)"
+echo "Tạo Chứng chỉ SSL (Phát triển)"
 echo "========================================="
 
-# Create SSL directory if not exists
+# Tạo thư mục SSL nếu chưa có
 mkdir -p "$CERT_DIR"
 
-# Generate self-signed certificate
+# Tạo chứng chỉ tự ký
 openssl req -x509 -nodes -days $DAYS_VALID \
     -newkey rsa:2048 \
     -keyout "$CERT_DIR/server.key" \
     -out "$CERT_DIR/server.crt" \
     -subj "/C=VN/ST=CanTho/L=CanTho/O=QuantFlow/OU=Development/CN=localhost"
 
-# Set proper permissions
+# Đặt quyền truy cập
 chmod 600 "$CERT_DIR/server.key"
 chmod 644 "$CERT_DIR/server.crt"
 
 echo ""
-echo "✓ SSL Certificate generated successfully!"
+echo "✓ Đã tạo chứng chỉ SSL thành công!"
 echo ""
-echo "Certificate: $CERT_DIR/server.crt"
-echo "Private Key: $CERT_DIR/server.key"
-echo "Valid for: $DAYS_VALID days"
+echo "Chứng chỉ: $CERT_DIR/server.crt"
+echo "Khóa:      $CERT_DIR/server.key"
+echo "Thời hạn:  $DAYS_VALID ngày"
 echo ""
-echo "WARNING: This is a self-signed certificate for development only."
-echo "Browsers will show security warnings. For production, use Let's Encrypt."
+echo "CẢNH BÁO: Đây là chứng chỉ tự ký, chỉ dùng cho phát triển."
+echo "Trình duyệt sẽ hiện cảnh báo bảo mật. Khi lên production, dùng Let's Encrypt."
 echo ""
