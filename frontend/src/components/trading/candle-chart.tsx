@@ -264,7 +264,7 @@ export function CandleChart() {
   return (
     <div
       id="candle-chart-panel"
-      className="flex-1 flex flex-col overflow-hidden"
+      className="h-full w-full flex flex-col overflow-hidden"
     >
       {/* Chart Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-card">

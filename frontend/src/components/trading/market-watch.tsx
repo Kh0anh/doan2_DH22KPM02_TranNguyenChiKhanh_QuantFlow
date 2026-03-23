@@ -175,7 +175,6 @@ export function MarketWatch() {
       id="market-watch-panel"
       className="
         h-full flex flex-col
-        w-[220px] min-w-[220px] max-w-[220px]
         border-r border-border
         bg-card
       "
