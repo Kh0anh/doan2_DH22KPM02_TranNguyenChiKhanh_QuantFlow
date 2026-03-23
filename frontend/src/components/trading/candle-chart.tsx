@@ -29,6 +29,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import {
   createChart,
+  createSeriesMarkers,
   CandlestickSeries,
   ColorType,
   CrosshairMode,
@@ -126,6 +127,8 @@ export function CandleChart() {
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const seriesApiRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const markersRef = useRef<any>(null);
 
   const isPositive = (Number(priceChangePercent) || 0) >= 0;
 
@@ -228,8 +231,13 @@ export function CandleChart() {
     // Set candle data
     seriesApiRef.current.setData(lcData);
 
-    // Set trade markers
-    if (markers.length > 0) {
+    // Set trade markers (LC v5: use createSeriesMarkers instead of removed setMarkers)
+    // Remove previous markers primitive before creating a new one
+    if (markersRef.current) {
+      markersRef.current.detach();
+      markersRef.current = null;
+    }
+    if (markers.length > 0 && seriesRef.current) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const lcMarkers = markers.map((m) => ({
         time: m.time as any,
@@ -238,7 +246,7 @@ export function CandleChart() {
         shape: m.shape,
         text: m.text,
       }));
-      seriesApiRef.current.setMarkers(lcMarkers);
+      markersRef.current = createSeriesMarkers(seriesRef.current, lcMarkers);
     }
 
     // Fit content to view
