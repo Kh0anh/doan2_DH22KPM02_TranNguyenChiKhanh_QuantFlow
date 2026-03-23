@@ -36,7 +36,7 @@ type BottomTab = "bot" | "backtest" | "history";
 const TABS: { id: BottomTab; label: string; icon: React.ElementType }[] = [
   { id: "bot", label: "Bot", icon: Bot },
   { id: "backtest", label: "Backtest", icon: FlaskConical },
-  { id: "history", label: "Lịch sử GD", icon: History },
+  { id: "history", label: "Lịch sử Giao dịch", icon: History },
 ];
 
 // -----------------------------------------------------------------

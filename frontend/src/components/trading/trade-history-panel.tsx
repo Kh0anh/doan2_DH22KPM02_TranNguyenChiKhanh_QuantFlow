@@ -160,10 +160,10 @@ export function TradeHistoryPanel() {
           }
         >
           <SelectTrigger className="h-7 w-[110px] text-xs">
-            <SelectValue placeholder="Tất cả Symbol" />
+            <SelectValue placeholder="Tất cả Cặp tiền" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__all__">Tất cả Symbol</SelectItem>
+            <SelectItem value="__all__">Tất cả Cặp tiền</SelectItem>
             {SYMBOLS.filter(Boolean).map((s) => (
               <SelectItem key={s} value={s}>
                 {s}
@@ -178,10 +178,10 @@ export function TradeHistoryPanel() {
           onValueChange={(v) => updateFilter("side", v === "__all__" ? "" : v)}
         >
           <SelectTrigger className="h-7 w-[90px] text-xs">
-            <SelectValue placeholder="Tất cả Side" />
+            <SelectValue placeholder="Tất cả Chiều" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__all__">Tất cả Side</SelectItem>
+            <SelectItem value="__all__">Tất cả Chiều</SelectItem>
             {SIDES.filter(Boolean).map((s) => (
               <SelectItem key={s} value={s}>
                 {s}
@@ -198,10 +198,10 @@ export function TradeHistoryPanel() {
           }
         >
           <SelectTrigger className="h-7 w-[100px] text-xs">
-            <SelectValue placeholder="Tất cả Status" />
+            <SelectValue placeholder="Tất cả Trạng thái" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__all__">Tất cả Status</SelectItem>
+            <SelectItem value="__all__">Tất cả Trạng thái</SelectItem>
             {STATUSES.filter(Boolean).map((s) => (
               <SelectItem key={s} value={s}>
                 {s}
@@ -246,12 +246,12 @@ export function TradeHistoryPanel() {
                 </th>
                 <th className="py-1.5 px-2 text-left font-medium">Bot</th>
                 <th className="py-1.5 px-2 text-left font-medium">Symbol</th>
-                <th className="py-1.5 px-2 text-left font-medium">Side</th>
-                <th className="py-1.5 px-2 text-right font-medium">Qty</th>
+                <th className="py-1.5 px-2 text-left font-medium">Chiều</th>
+                <th className="py-1.5 px-2 text-right font-medium">Khối lượng</th>
                 <th className="py-1.5 px-2 text-right font-medium">
                   Giá khớp
                 </th>
-                <th className="py-1.5 px-2 text-right font-medium">PnL</th>
+                <th className="py-1.5 px-2 text-right font-medium">Lợi nhuận</th>
               </tr>
             </thead>
             <tbody>
