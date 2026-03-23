@@ -467,7 +467,7 @@ function ExchangeTab() {
             <Label className="text-xs text-muted-foreground">API Key hiện tại</Label>
             <div className="flex h-9 items-center rounded-md border border-border bg-secondary px-3 font-mono text-xs text-muted-foreground">
               {typeof apiKeyInfo.apiKeyMasked === "string"
-                ? "••••••••••••••••••••••••••••••••" + apiKeyInfo.apiKeyMasked.slice(-4)
+                ? apiKeyInfo.apiKeyMasked.slice(-57)
                 : "—"}
             </div>
           </div>
