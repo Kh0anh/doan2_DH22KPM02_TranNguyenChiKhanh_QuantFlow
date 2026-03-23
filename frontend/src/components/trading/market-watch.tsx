@@ -27,7 +27,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Search, Bot, TrendingUp, TrendingDown } from "lucide-react";
+import { Search, Bot, TrendingUp, TrendingDown, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUIStore } from "@/store/ui-store";
@@ -153,22 +153,64 @@ function SymbolRow({ symbol, isActive, onSelect }: SymbolRowProps) {
 // MarketWatch main component
 // -----------------------------------------------------------------
 
+type SortField = "price" | "change";
+type SortDir = "asc" | "desc";
+
 export function MarketWatch() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortField, setSortField] = useState<SortField | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const { symbols, isLoading } = useMarketData();
   const activeSymbol = useUIStore((s) => s.activeSymbol);
   const setActiveSymbol = useUIStore((s) => s.setActiveSymbol);
 
-  // Client-side instant filter (frontend_flows §3.2.2)
+  // Toggle sort: click same field → flip direction, click different → set desc
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setSortField(field);
+      setSortDir("desc");
+    }
+  };
+
+  // Client-side instant filter + sort
   const filteredSymbols = useMemo(() => {
-    if (!searchQuery.trim()) return symbols;
-    const q = searchQuery.toUpperCase().trim();
-    return symbols.filter(
-      (s) =>
-        s.symbol.includes(q) ||
-        s.baseAsset.toUpperCase().includes(q),
+    let result = symbols;
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toUpperCase().trim();
+      result = result.filter(
+        (s) =>
+          s.symbol.includes(q) ||
+          s.baseAsset.toUpperCase().includes(q),
+      );
+    }
+
+    // Sort
+    if (sortField) {
+      result = [...result].sort((a, b) => {
+        const valA = sortField === "price" ? a.lastPrice : a.priceChangePercent;
+        const valB = sortField === "price" ? b.lastPrice : b.priceChangePercent;
+        return sortDir === "desc" ? valB - valA : valA - valB;
+      });
+    }
+
+    return result;
+  }, [symbols, searchQuery, sortField, sortDir]);
+
+  // Sort indicator icon
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="h-2.5 w-2.5 opacity-40" />;
+    }
+    return sortDir === "desc" ? (
+      <ArrowDown className="h-2.5 w-2.5 text-primary" />
+    ) : (
+      <ArrowUp className="h-2.5 w-2.5 text-primary" />
     );
-  }, [symbols, searchQuery]);
+  };
 
   return (
     <div
@@ -204,10 +246,26 @@ export function MarketWatch() {
         </div>
       </div>
 
-      {/* Column headers */}
+      {/* Column headers — clickable for sorting */}
       <div className="flex items-center justify-between px-3 py-1.5 text-[10px] text-muted-foreground/70 uppercase tracking-wider border-b border-border/50">
         <span>Symbol</span>
-        <span>Giá / 24h</span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleSort("price")}
+            className="flex items-center gap-0.5 hover:text-foreground transition-colors cursor-pointer"
+          >
+            Giá <SortIcon field="price" />
+          </button>
+          <span className="text-muted-foreground/30">/</span>
+          <button
+            type="button"
+            onClick={() => handleSort("change")}
+            className="flex items-center gap-0.5 hover:text-foreground transition-colors cursor-pointer"
+          >
+            24h <SortIcon field="change" />
+          </button>
+        </div>
       </div>
 
       {/* Symbol list */}
@@ -258,3 +316,4 @@ export function MarketWatch() {
     </div>
   );
 }
+
