@@ -164,7 +164,13 @@ export function exportToJsonFile(
   state: BlocklyJsonState,
   strategyName: string,
 ): void {
-  const jsonString = JSON.stringify(state, null, 2);
+  // Wrap in the same {name, logic_json} format as GET /strategies/{id}/export
+  // so the exported file can be re-imported via POST /strategies/import.
+  const exportData = {
+    name: strategyName,
+    logic_json: state,
+  };
+  const jsonString = JSON.stringify(exportData, null, 2);
   const blob = new Blob([jsonString], { type: "application/json" });
   const url = URL.createObjectURL(blob);
 

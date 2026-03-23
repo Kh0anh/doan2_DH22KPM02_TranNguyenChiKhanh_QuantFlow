@@ -176,24 +176,33 @@ export function useStrategies() {
     async (file: File) => {
       try {
         const text = await file.text();
-        const json = JSON.parse(text) as {
-          name?: string;
-          logic_json?: Record<string, unknown>;
-        };
+        const json = JSON.parse(text) as Record<string, unknown>;
 
-        if (!json.name || !json.logic_json) {
+        let name: string;
+        let logicJson: Record<string, unknown>;
+
+        if (json.name && json.logic_json) {
+          // Standard format: { name, logic_json, ... }
+          name = json.name as string;
+          logicJson = json.logic_json as Record<string, unknown>;
+        } else if (json.blocks) {
+          // Legacy/raw Blockly state: { blocks: { ... } }
+          // Use filename (without extension) as strategy name
+          name = file.name.replace(/\.json$/i, "").replace(/[-_]+/g, " ");
+          logicJson = json;
+        } else {
           toast.error(
-            "File JSON không hợp lệ. Cần có trường 'name' và 'logic_json'.",
+            "File JSON không hợp lệ. Cần có trường 'name' và 'logic_json', hoặc là file Blockly hợp lệ.",
           );
           return;
         }
 
         await strategyApi.importStrategy({
-          name: json.name,
-          logic_json: json.logic_json,
+          name,
+          logic_json: logicJson,
         });
 
-        toast.success(`Nhập chiến lược "${json.name}" thành công.`);
+        toast.success(`Nhập chiến lược "${name}" thành công.`);
         // Re-fetch to show new strategy
         void fetchStrategies(1, debouncedSearch);
       } catch (err) {
