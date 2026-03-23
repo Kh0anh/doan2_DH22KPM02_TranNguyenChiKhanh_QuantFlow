@@ -25,6 +25,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useUIStore } from "@/store/ui-store";
 import { ConnectionIndicator } from "@/components/shared/connection-indicator";
+import { QuantFlowLogo } from "@/components/shared/quantflow-logo";
 import { useSystemAlerts } from "@/lib/hooks/use-system-alerts";
 
 // ---------------------------------------------------------------------------
@@ -65,20 +66,7 @@ export function TopBar() {
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card px-4">
       {/* ── Logo ── */}
-      <div className="flex items-center gap-2">
-        <div className="flex size-7 items-center justify-center rounded-md bg-primary/10">
-          <svg
-            viewBox="0 0 24 24"
-            className="size-4 fill-primary"
-            aria-hidden="true"
-          >
-            <path d="M2 2h9v9H2V2zm11 0h9v9h-9V2zM2 13h9v9H2v-9zm13 4a4 4 0 1 1 0-8 4 4 0 0 1 0 8z" />
-          </svg>
-        </div>
-        <span className="text-sm font-semibold tracking-tight text-foreground">
-          QuantFlow
-        </span>
-      </div>
+      <QuantFlowLogo showText />
 
       {/* ── Right side: Connection indicator + User dropdown ── */}
       <div className="flex items-center gap-3">

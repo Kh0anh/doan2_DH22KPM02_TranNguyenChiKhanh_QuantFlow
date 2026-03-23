@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
+import { QuantFlowLogo } from "@/components/shared/quantflow-logo";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -245,15 +246,12 @@ export default function LoginPage() {
       {/* ── Logo & Tagline ── */}
       <CardHeader className="items-center justify-items-center text-center pb-2">
         {/* QuantFlow icon mark */}
-        <div className="mb-3 flex size-12 items-center justify-center rounded-xl bg-primary/10">
-          <svg
-            viewBox="0 0 24 24"
-            className="size-7 fill-primary"
-            aria-hidden="true"
-          >
-            <path d="M2 2h9v9H2V2zm11 0h9v9h-9V2zM2 13h9v9H2v-9zm13 4a4 4 0 1 1 0-8 4 4 0 0 1 0 8z" />
-          </svg>
-        </div>
+        <QuantFlowLogo
+          iconSize="size-7"
+          containerSize="size-12"
+          rounded="rounded-xl"
+          className="mb-3"
+        />
         <CardTitle className="text-xl font-semibold tracking-tight">
           QuantFlow
         </CardTitle>
