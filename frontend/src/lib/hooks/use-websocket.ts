@@ -117,7 +117,7 @@ export function useWebSocket(): UseWebSocketReturn {
     // Handle auth failure → redirect to login
     const handleAuthFailed = () => {
       manager.disconnect();
-      router.replace("/login");
+      router.replace("/login?from=logout");
     };
     manager.on("auth_failed", handleAuthFailed);
 

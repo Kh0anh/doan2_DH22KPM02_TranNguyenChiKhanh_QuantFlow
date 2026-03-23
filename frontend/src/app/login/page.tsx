@@ -12,7 +12,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   Eye,
@@ -64,6 +64,7 @@ function formatCountdown(totalSeconds: number): string {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // Form field state
   const [username, setUsername] = useState("");
@@ -81,8 +82,15 @@ export default function LoginPage() {
 
   // -------------------------------------------------------------------------
   // On mount: check if already authenticated → redirect to /trading
+  // Skip session check if arrived from logout to prevent redirect loop.
   // -------------------------------------------------------------------------
   useEffect(() => {
+    // User just logged out — skip the /auth/me check entirely
+    if (searchParams.get("from") === "logout") {
+      setIsCheckingSession(false);
+      return;
+    }
+
     let cancelled = false;
 
     async function checkSession() {
@@ -105,7 +113,7 @@ export default function LoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, searchParams]);
 
   // -------------------------------------------------------------------------
   // Countdown timer — active only while account is locked

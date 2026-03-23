@@ -99,7 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.status === 401) {
         clearRefreshTimer();
         setUser(null);
-        router.replace("/login");
+        router.replace("/login?from=logout");
         return;
       }
       if (res.ok) {
@@ -128,14 +128,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
 
         if (!res.ok) {
-          router.replace("/login");
+          router.replace("/login?from=logout");
           return;
         }
 
         const body = await res.json();
         const raw = body?.data?.user;
         if (!raw) {
-          router.replace("/login");
+          router.replace("/login?from=logout");
           return;
         }
 
@@ -151,7 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         doRefresh();
       } catch {
         if (!cancelled) {
-          router.replace("/login");
+          router.replace("/login?from=logout");
         }
       } finally {
         if (!cancelled) {
@@ -178,7 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
     } finally {
       setUser(null);
-      router.replace("/login");
+      router.replace("/login?from=logout");
     }
   }, [clearRefreshTimer, router]);
 
