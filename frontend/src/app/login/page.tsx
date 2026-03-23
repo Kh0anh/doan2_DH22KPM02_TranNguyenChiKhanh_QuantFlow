@@ -243,7 +243,7 @@ export default function LoginPage() {
       )}
     >
       {/* ── Logo & Tagline ── */}
-      <CardHeader className="items-center text-center pb-2">
+      <CardHeader className="items-center justify-items-center text-center pb-2">
         {/* QuantFlow icon mark */}
         <div className="mb-3 flex size-12 items-center justify-center rounded-xl bg-primary/10">
           <svg
