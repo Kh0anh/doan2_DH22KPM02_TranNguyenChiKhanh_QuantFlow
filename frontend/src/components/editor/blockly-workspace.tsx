@@ -146,6 +146,26 @@ export default function BlocklyWorkspace({
   }, []); // run exactly once on mount
 
   // ------------------------------------------------------------------
+  // Workaround: suppress Blockly v12 FocusManager "unregistered tree"
+  // error (google/blockly#9599). Occurs when a workspace inside a
+  // display:none container receives a focus event before re-registration.
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    const handler = (event: ErrorEvent) => {
+      if (
+        event.error?.message?.includes?.(
+          "Attempted to focus unregistered tree",
+        )
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+    window.addEventListener("error", handler);
+    return () => window.removeEventListener("error", handler);
+  }, []);
+
+  // ------------------------------------------------------------------
   // Resize when tab becomes visible (display:none → display:block)
   // ------------------------------------------------------------------
   useEffect(() => {
