@@ -158,6 +158,11 @@ function BotRow({
           {bot.symbol}
         </span>
 
+        {/* Strategy Name */}
+        <span className="text-xs text-muted-foreground/80 min-w-[80px] truncate" title={bot.strategyName}>
+          {bot.strategyName || "—"}
+        </span>
+
         {/* Status */}
         <div className="min-w-[80px]">
           <StatusBadge status={bot.status} />

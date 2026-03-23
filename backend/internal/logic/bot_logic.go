@@ -71,11 +71,13 @@ type BotCreated struct {
 	ID              string `json:"id"`
 	BotName         string `json:"bot_name"`
 	StrategyID      string `json:"strategy_id"`
+	StrategyName    string `json:"strategy_name"`
 	StrategyVersion int    `json:"strategy_version"`
 	Symbol          string `json:"symbol"`
 	Status          string `json:"status"`
 	TotalPnL        string `json:"total_pnl"`
-	CreatedAt       string `json:"created_at"` // ISO8601 timestamp
+	CreatedAt       string `json:"created_at"`  // ISO8601 timestamp
+	UpdatedAt       string `json:"updated_at"` // ISO8601 timestamp
 }
 
 // BotLogic orchestrates bot lifecycle business rules (WBS 2.7.5).
@@ -234,11 +236,13 @@ func (l *BotLogic) CreateBot(ctx context.Context, userID string, input CreateBot
 		ID:              botInstance.ID,
 		BotName:         botInstance.BotName,
 		StrategyID:      input.StrategyID,
+		StrategyName:    strategyDetail.Name,
 		StrategyVersion: strategyDetail.Version,
 		Symbol:          input.Symbol,
 		Status:          domain.BotStatusRunning,
 		TotalPnL:        "0",
 		CreatedAt:       botInstance.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:       botInstance.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}, nil
 }
 

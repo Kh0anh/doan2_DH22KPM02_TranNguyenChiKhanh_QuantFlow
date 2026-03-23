@@ -67,7 +67,7 @@ function mapBot(s: BotSummaryResponse): BotItem {
     strategyName: s.strategy_name,
     strategyVersion: s.strategy_version,
     status: s.status,
-    totalPnl: s.total_pnl,
+    totalPnl: Number(s.total_pnl) || 0,
     createdAt: s.created_at,
     updatedAt: s.updated_at,
   };
