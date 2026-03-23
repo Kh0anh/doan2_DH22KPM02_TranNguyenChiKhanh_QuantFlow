@@ -167,19 +167,21 @@ func (l *StrategyLogic) CreateStrategy(ctx context.Context, userID string, input
 	}
 
 	// 2. Validate logic_json structure and presence of event_on_candle block.
+	//    Skip event trigger validation for Draft strategies — users may save
+	//    incomplete work-in-progress without an event block.
 	found, err := hasEventTriggerBlock(input.LogicJSON)
 	if err != nil {
 		return nil, ErrInvalidJSONStructure
 	}
-	if !found {
-		return nil, ErrMissingEventTrigger
-	}
-
-	// 3. Normalise status.
 	status := input.Status
 	if status != domain.StrategyStatusDraft && status != domain.StrategyStatusValid {
 		status = domain.StrategyStatusDraft
 	}
+	if !found && status != domain.StrategyStatusDraft {
+		return nil, ErrMissingEventTrigger
+	}
+
+	// 3. (status already normalised above)
 
 	// 4. Build entities and persist.
 	strategy := &domain.Strategy{
@@ -338,7 +340,13 @@ func (l *StrategyLogic) UpdateStrategy(ctx context.Context, userID, strategyID s
 		if err != nil {
 			return nil, ErrInvalidJSONStructure
 		}
-		if !found {
+		// Only enforce event trigger validation for non-Draft strategies.
+		effectiveStatus := input.Status
+		if effectiveStatus == "" {
+			// Status not being changed — we don't block Draft saves.
+			// However, if explicitly set to Valid, enforce the check.
+		}
+		if !found && effectiveStatus != "" && effectiveStatus != domain.StrategyStatusDraft {
 			return nil, ErrMissingEventTrigger
 		}
 	}
