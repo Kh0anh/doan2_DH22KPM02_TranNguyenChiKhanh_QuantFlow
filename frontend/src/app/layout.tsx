@@ -10,7 +10,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "QuantFlow — Low-code Crypto Trading",
+  title: "QuantFlow - Low-code Crypto Trading",
   description:
     "Nền tảng Low-code hỗ trợ xây dựng và vận hành chiến lược giao dịch tiền mã hóa",
 };
