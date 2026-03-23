@@ -245,7 +245,7 @@ export function TradeHistoryPanel() {
                   Thời gian
                 </th>
                 <th className="py-1.5 px-2 text-left font-medium">Bot</th>
-                <th className="py-1.5 px-2 text-left font-medium">Symbol</th>
+                <th className="py-1.5 px-2 text-left font-medium">Cặp tiền</th>
                 <th className="py-1.5 px-2 text-left font-medium">Chiều</th>
                 <th className="py-1.5 px-2 text-right font-medium">Khối lượng</th>
                 <th className="py-1.5 px-2 text-right font-medium">

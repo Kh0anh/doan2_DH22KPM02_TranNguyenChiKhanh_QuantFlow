@@ -224,7 +224,7 @@ export function MarketWatch() {
       {/* Header */}
       <div className="px-3 py-2 border-b border-border">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-          Market Watch
+          Theo dõi Thị trường
         </h2>
 
         {/* Search input — sticky top */}
@@ -248,7 +248,7 @@ export function MarketWatch() {
 
       {/* Column headers — clickable for sorting */}
       <div className="flex items-center justify-between px-3 py-1.5 text-[10px] text-muted-foreground/70 uppercase tracking-wider border-b border-border/50">
-        <span>Symbol</span>
+        <span>Cặp tiền</span>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -311,7 +311,7 @@ export function MarketWatch() {
 
       {/* Footer: symbol count */}
       <div className="px-3 py-1.5 border-t border-border text-[10px] text-muted-foreground/50 text-center">
-        {filteredSymbols.length} / {symbols.length} symbols
+        {filteredSymbols.length} / {symbols.length} cặp tiền
       </div>
     </div>
   );

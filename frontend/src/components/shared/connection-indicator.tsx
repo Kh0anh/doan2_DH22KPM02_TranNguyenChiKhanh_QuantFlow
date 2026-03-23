@@ -36,37 +36,37 @@ interface StateConfig {
 
 const STATES: Record<string, StateConfig> = {
   connected: {
-    label: "Connected",
+    label: "Đã kết nối",
     dotClass: "bg-emerald-500",
     textClass: "text-emerald-500",
     pulse: true,
   },
   connecting: {
-    label: "Connecting...",
+    label: "Đang kết nối...",
     dotClass: "bg-yellow-500",
     textClass: "text-yellow-500",
     pulse: true,
   },
   reconnecting: {
-    label: "Reconnecting...",
+    label: "Đang kết nối lại...",
     dotClass: "bg-yellow-500",
     textClass: "text-yellow-500",
     pulse: true,
   },
   checking: {
-    label: "Checking...",
+    label: "Đang kiểm tra...",
     dotClass: "bg-yellow-500",
     textClass: "text-yellow-500",
     pulse: true,
   },
   no_exchange: {
-    label: "No Exchange",
+    label: "Chưa kết nối sàn",
     dotClass: "bg-red-500",
     textClass: "text-red-500",
     pulse: false,
   },
   disconnected: {
-    label: "Disconnected",
+    label: "Mất kết nối",
     dotClass: "bg-red-500",
     textClass: "text-red-500",
     pulse: false,

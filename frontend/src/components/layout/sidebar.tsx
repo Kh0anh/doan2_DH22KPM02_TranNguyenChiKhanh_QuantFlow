@@ -39,7 +39,7 @@ const NAV_ITEMS = [
   {
     href: "/editor",
     icon: Plus,
-    label: "Editor",
+    label: "Trình soạn thảo",
   },
 ] as const;
 
