@@ -34,6 +34,11 @@ Blockly.setLocale(EnMsg as unknown as { [key: string]: string });
 const QUANTFLOW_THEME = Blockly.Theme.defineTheme("quantflow-dark", {
   name: "quantflow-dark",
   base: Blockly.Themes.Classic,
+  fontStyle: {
+    family: "'JetBrains Mono', monospace",
+    weight: "500",
+    size: 11,
+  },
   componentStyles: {
     workspaceBackgroundColour: "#0D1117",
     toolboxBackgroundColour: "#161B22",
